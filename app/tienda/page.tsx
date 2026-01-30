@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 
 export default function TiendaPage() {
-  const [rewards, setRewards] = useState([]);
+  const [rewards, setRewards] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
