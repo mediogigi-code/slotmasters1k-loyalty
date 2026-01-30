@@ -33,51 +33,33 @@ console.log('🤖 SlotMasters1K Points Bot iniciando...');
 console.log(`📺 Canal: ${KICK_CHANNEL}`);
 console.log(`👤 Bot: ${BOT_USERNAME}`);
 
-// Autenticación del bot
-async function authenticateBot() {
-  try {
-    console.log('🔐 Autenticando bot en Kick...');
-    
-    const response = await fetch('https://kick.com/api/v2/authentication/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        email: BOT_USERNAME,
-        password: BOT_PASSWORD,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Error de autenticación: ${response.status}`);
-    }
-
-    const data = await response.json();
-    botToken = data.token;
-    
-    console.log('✅ Bot autenticado correctamente');
-    return botToken;
-  } catch (error) {
-    console.error('❌ Error autenticando bot:', error);
-    return null;
-  }
-}
+// Nota: Bot simplificado - NO requiere autenticación
+// Solo lee el chat y acumula puntos, no envía mensajes
 
 // Obtener info del canal
 async function getChannelInfo() {
   try {
     const response = await fetch(`https://kick.com/api/v2/channels/${KICK_CHANNEL}`);
+    
+    if (!response.ok) {
+      console.error(`❌ Error HTTP: ${response.status}`);
+      return null;
+    }
+    
     const data = await response.json();
     
     chatRoomId = data.chatroom?.id;
     isLive = data.livestream !== null;
     
+    if (!chatRoomId) {
+      console.error('❌ No se pudo obtener chatRoomId del canal');
+      return null;
+    }
+    
     console.log(`📡 Canal info: Chat ID=${chatRoomId}, Live=${isLive}`);
     return data;
   } catch (error) {
-    console.error('❌ Error obteniendo info del canal:', error);
+    console.error('❌ Error obteniendo info del canal:', error.message);
     return null;
   }
 }
@@ -177,7 +159,7 @@ async function handleChatMessage(messageData) {
   }
 }
 
-// Comando !puntos
+// Comando !puntos - Respuesta deshabilitada (sin autenticación)
 async function handlePointsCommand(username) {
   try {
     // Buscar usuario en la base de datos
@@ -188,48 +170,22 @@ async function handlePointsCommand(username) {
       .single();
 
     if (error || !user) {
-      await sendChatMessage(`@${username} No estás registrado. Visita https://comunidad.slotmasters1k.net para registrarte! 🎮`);
+      console.log(`ℹ️ ${username} no registrado - comando !puntos`);
       return;
     }
 
     const points = user.points_balance || 0;
-    await sendChatMessage(`@${username} tienes ${points.toLocaleString()} puntos 💎`);
+    console.log(`📊 ${username} consultó puntos: ${points} (respuesta deshabilitada - sin auth)`);
     
-    console.log(`📊 ${username} consultó sus puntos: ${points}`);
   } catch (error) {
     console.error('Error en comando !puntos:', error);
   }
 }
 
-// Enviar mensaje al chat
+// Enviar mensaje al chat - Deshabilitado (sin autenticación)
 async function sendChatMessage(message) {
-  if (!botToken || !chatRoomId) {
-    console.error('No se puede enviar mensaje: sin token o chatRoomId');
-    return;
-  }
-
-  try {
-    const response = await fetch(`https://kick.com/api/v2/messages/send/${chatRoomId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${botToken}`,
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        content: message,
-        type: 'message',
-      }),
-    });
-
-    if (response.ok) {
-      console.log(`📤 Mensaje enviado: ${message}`);
-    } else {
-      console.error(`Error enviando mensaje: ${response.status}`);
-    }
-  } catch (error) {
-    console.error('Error enviando mensaje al chat:', error);
-  }
+  console.log(`ℹ️ Mensaje no enviado (auth deshabilitada): ${message}`);
+  return;
 }
 
 // Verificar si el stream está en vivo
@@ -242,10 +198,9 @@ async function checkLiveStatus() {
     isLive = data.livestream !== null;
     
     if (isLive && !wasLive) {
-      console.log('🔴 Stream INICIADO');
-      await sendChatMessage('¡El sistema de puntos está activo! Gana puntos viendo el stream. Usa !puntos para ver tu saldo 💎');
+      console.log('🔴 Stream INICIADO - Sistema de puntos activado');
     } else if (!isLive && wasLive) {
-      console.log('⚫ Stream FINALIZADO');
+      console.log('⚫ Stream FINALIZADO - Sistema de puntos pausado');
     }
     
     return isLive;
@@ -326,13 +281,16 @@ async function distributePoints() {
 
 // Iniciar el bot
 async function startBot() {
-  console.log('🚀 Iniciando bot...');
-  
-  // Autenticar bot
-  await authenticateBot();
+  console.log('🚀 Iniciando bot (modo sin autenticación - solo lectura)...');
   
   // Obtener info del canal
-  await getChannelInfo();
+  const channelData = await getChannelInfo();
+  
+  if (!channelData || !chatRoomId) {
+    console.error('❌ No se pudo inicializar el bot - reintentando en 30s...');
+    setTimeout(startBot, 30000);
+    return;
+  }
   
   // Conectar al chat
   await connectToChat();
@@ -345,6 +303,7 @@ async function startBot() {
   
   console.log('✅ Bot iniciado correctamente');
   console.log(`⏰ Puntos se distribuirán cada ${POINTS_CONFIG.INTERVAL_MINUTES} minutos`);
+  console.log('ℹ️  Comando !puntos detectado pero respuestas deshabilitadas (sin auth)');
 }
 
 // Manejo de errores no capturados
