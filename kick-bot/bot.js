@@ -36,13 +36,26 @@ console.log(`👤 Bot: ${BOT_USERNAME}`);
 // Nota: Bot simplificado - NO requiere autenticación
 // Solo lee el chat y acumula puntos, no envía mensajes
 
+// Headers para simular navegador y evitar bloqueos
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+  'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+  'Referer': 'https://kick.com/',
+  'Origin': 'https://kick.com'
+};
+
 // Obtener info del canal
 async function getChannelInfo() {
   try {
-    const response = await fetch(`https://kick.com/api/v2/channels/${KICK_CHANNEL}`);
+    const response = await fetch(`https://kick.com/api/v2/channels/${KICK_CHANNEL}`, {
+      headers: BROWSER_HEADERS
+    });
     
     if (!response.ok) {
       console.error(`❌ Error HTTP: ${response.status}`);
+      const text = await response.text();
+      console.error(`Response: ${text.substring(0, 200)}`);
       return null;
     }
     
@@ -191,7 +204,15 @@ async function sendChatMessage(message) {
 // Verificar si el stream está en vivo
 async function checkLiveStatus() {
   try {
-    const response = await fetch(`https://kick.com/api/v2/channels/${KICK_CHANNEL}`);
+    const response = await fetch(`https://kick.com/api/v2/channels/${KICK_CHANNEL}`, {
+      headers: BROWSER_HEADERS
+    });
+    
+    if (!response.ok) {
+      console.error(`❌ Error verificando stream: ${response.status}`);
+      return false;
+    }
+    
     const data = await response.json();
     
     const wasLive = isLive;
@@ -205,7 +226,7 @@ async function checkLiveStatus() {
     
     return isLive;
   } catch (error) {
-    console.error('Error verificando estado del stream:', error);
+    console.error('Error verificando estado del stream:', error.message);
     return false;
   }
 }
