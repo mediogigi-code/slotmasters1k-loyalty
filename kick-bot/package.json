@@ -1,0 +1,24 @@
+{
+  "name": "slotmasters1k-kick-bot",
+  "version": "1.0.0",
+  "description": "Bot de Kick para acumulación automática de puntos y comandos de chat",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js"
+  },
+  "keywords": ["kick", "bot", "points", "loyalty"],
+  "author": "SlotMasters1K",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
