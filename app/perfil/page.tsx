@@ -1,334 +1,194 @@
-/**
- * 🤖 SlotMasters1K - Script de Acumulación de Puntos
- * 
- * INSTRUCCIONES:
- * 1. Abre Kick.com/slotmasters1k en tu navegador
- * 2. Abre la consola del navegador (F12 → Console)
- * 3. Pega TODO este script y presiona Enter
- * 4. El script se ejecutará automáticamente mientras estés en vivo
- * 
- * IMPORTANTE: Mantén esta pestaña abierta mientras streameas
- */
+'use client';
 
-(function() {
-  'use strict';
-  
-  // ==================== CONFIGURACIÓN ====================
-  const CONFIG = {
-    SUPABASE_URL: 'https://tougduqztbrgysvvfjgp.supabase.co',
-    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvdWdkdXF6dGJyZ3lzdnZmamdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3MDI2MTAsImV4cCI6MjA4NTI3ODYxMH0.tnMVz6jlrLhMD0EJg3SZizc7aJnUNbcMhQyG0V2HLCw',
-    
-    CHANNEL_NAME: 'slotmasters1k',
-    
-    // Sistema de puntos
-    BASE_POINTS: 5,
-    CHAT_BONUS: 2,
-    SUBSCRIBER_MULTIPLIER: 2,
-    INTERVAL_MINUTES: 10,
-    MIN_MESSAGE_LENGTH: 10,
-    MESSAGE_COOLDOWN: 5 * 60 * 1000, // 5 minutos
-  };
-  
-  // ==================== ESTADO ====================
-  let isRunning = false;
-  let isLive = false;
-  let activeUsers = new Map();
-  let intervalId = null;
-  let chatObserver = null;
-  
-  console.log('🤖 SlotMasters1K Points Bot cargado');
-  console.log('📺 Canal:', CONFIG.CHANNEL_NAME);
-  console.log('⏰ Distribución de puntos cada', CONFIG.INTERVAL_MINUTES, 'minutos');
-  
-  // ==================== SUPABASE CLIENT ====================
-  class SupabaseClient {
-    constructor(url, key) {
-      this.url = url;
-      this.key = key;
-      this.headers = {
-        'apikey': key,
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      };
-    }
-    
-    async query(table, options = {}) {
-      let url = `${this.url}/rest/v1/${table}`;
-      const params = new URLSearchParams();
-      
-      if (options.select) params.append('select', options.select);
-      if (options.eq) {
-        Object.entries(options.eq).forEach(([key, value]) => {
-          params.append(key, `eq.${value}`);
-        });
-      }
-      
-      if (params.toString()) url += `?${params.toString()}`;
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: this.headers
-      });
-      
-      if (!response.ok) throw new Error(`Supabase error: ${response.status}`);
-      return await response.json();
-    }
-    
-    async update(table, data, match) {
-      let url = `${this.url}/rest/v1/${table}`;
-      const params = new URLSearchParams();
-      
-      if (match) {
-        Object.entries(match).forEach(([key, value]) => {
-          params.append(key, `eq.${value}`);
-        });
-      }
-      
-      if (params.toString()) url += `?${params.toString()}`;
-      
-      const response = await fetch(url, {
-        method: 'PATCH',
-        headers: this.headers,
-        body: JSON.stringify(data)
-      });
-      
-      if (!response.ok) throw new Error(`Supabase error: ${response.status}`);
-      return await response.json();
-    }
-  }
-  
-  const supabase = new SupabaseClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-  
-  // ==================== DETECCIÓN DE ESTADO ====================
-  function checkIfLive() {
-    // Buscar indicadores de que el stream está en vivo
-    const liveIndicators = [
-      document.querySelector('[data-live="true"]'),
-      document.querySelector('.live-badge'),
-      document.querySelector('.streaming-indicator'),
-      Array.from(document.querySelectorAll('*')).find(el => 
-        el.textContent.toLowerCase().includes('live') || 
-        el.textContent.toLowerCase().includes('en vivo')
-      )
-    ];
-    
-    const wasLive = isLive;
-    isLive = liveIndicators.some(el => el !== null);
-    
-    if (isLive && !wasLive) {
-      console.log('🔴 Stream INICIADO - Sistema de puntos activado');
-    } else if (!isLive && wasLive) {
-      console.log('⚫ Stream FINALIZADO - Sistema de puntos pausado');
-      activeUsers.clear();
-    }
-    
-    return isLive;
-  }
-  
-  // ==================== DETECCIÓN DE CHAT ====================
-  function observeChat() {
-    // Buscar el contenedor de mensajes del chat
-    const chatContainer = document.querySelector('[class*="chat"]') || 
-                         document.querySelector('[class*="message"]') ||
-                         document.querySelector('#chatroom');
-    
-    if (!chatContainer) {
-      console.warn('⚠️ No se encontró el contenedor del chat, reintentando...');
-      setTimeout(observeChat, 5000);
-      return;
-    }
-    
-    console.log('✅ Chat detectado, monitoreando mensajes...');
-    
-    // Observar nuevos mensajes
-    chatObserver = new MutationObserver((mutations) => {
-      mutations.forEach(mutation => {
-        mutation.addedNodes.forEach(node => {
-          if (node.nodeType === 1) { // Element node
-            processChatMessage(node);
-          }
-        });
-      });
-    });
-    
-    chatObserver.observe(chatContainer, {
-      childList: true,
-      subtree: true
-    });
-  }
-  
-  function processChatMessage(messageElement) {
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+
+export default function PerfilPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [kickUsername, setKickUsername] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    loadUserData();
+  }, []);
+
+  async function loadUserData() {
     try {
-      // Extraer información del mensaje
-      const usernameEl = messageElement.querySelector('[class*="username"]') ||
-                        messageElement.querySelector('[data-username]');
-      const contentEl = messageElement.querySelector('[class*="content"]') ||
-                       messageElement.querySelector('[class*="message-text"]');
+      const userId = localStorage.getItem('user_id');
       
-      if (!usernameEl || !contentEl) return;
-      
-      const username = usernameEl.textContent.trim().replace('@', '');
-      const content = contentEl.textContent.trim();
-      
-      // Verificar si es un mensaje válido (no comando, longitud mínima)
-      if (content.startsWith('!') || content.length < CONFIG.MIN_MESSAGE_LENGTH) {
+      if (!userId) {
+        router.push('/');
         return;
       }
-      
-      // Detectar si es suscriptor
-      const badgesEl = messageElement.querySelector('[class*="badge"]');
-      const isSubscriber = badgesEl && badgesEl.textContent.toLowerCase().includes('sub');
-      
-      // Registrar actividad
-      const now = Date.now();
-      const userData = activeUsers.get(username) || { lastMessage: 0, messageCount: 0 };
-      
-      if (now - userData.lastMessage >= CONFIG.MESSAGE_COOLDOWN) {
-        activeUsers.set(username, {
-          lastMessage: now,
-          messageCount: userData.messageCount + 1,
-          isSubscriber
-        });
-        
-        console.log(`💬 ${username} ${isSubscriber ? '⭐' : ''} - actividad registrada`);
-      }
-      
-    } catch (error) {
-      console.error('Error procesando mensaje:', error);
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+
+      setUser(data);
+      setKickUsername(data.kick_username || '');
+    } catch (err) {
+      console.error('Error:', err);
+      router.push('/');
+    } finally {
+      setLoading(false);
     }
   }
-  
-  // ==================== DISTRIBUCIÓN DE PUNTOS ====================
-  async function distributePoints() {
-    if (!isLive) {
-      console.log('⏸️ Stream no está en vivo, no se distribuyen puntos');
+
+  async function handleUpdateUsername(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!kickUsername.trim()) {
+      setError('Por favor, escribe tu username de Kick');
       return;
     }
-    
-    console.log('💰 Distribuyendo puntos...');
-    console.log(`📊 Usuarios activos en chat: ${activeUsers.size}`);
-    
+
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+    if (!usernameRegex.test(kickUsername)) {
+      setError('El username solo puede contener letras, números y guiones bajos');
+      return;
+    }
+
+    setSaving(true);
+
     try {
-      // Obtener todos los usuarios registrados
-      const users = await supabase.query('users', {
-        select: 'id,kick_username,is_subscriber,points_balance'
-      });
-      
-      if (!users || users.length === 0) {
-        console.warn('⚠️ No hay usuarios registrados');
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('kick_username', kickUsername)
+        .neq('id', user.id)
+        .single();
+
+      if (existing) {
+        setError('Este username ya está en uso');
+        setSaving(false);
         return;
       }
+
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          kick_username: kickUsername,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      setSuccess('✅ Username actualizado');
+      setUser({ ...user, kick_username: kickUsername });
       
-      let totalDistributed = 0;
-      const updates = [];
-      
-      for (const user of users) {
-        let points = CONFIG.BASE_POINTS;
-        
-        // Bonus por actividad en chat
-        const userActivity = activeUsers.get(user.kick_username);
-        if (userActivity && Date.now() - userActivity.lastMessage < CONFIG.INTERVAL_MINUTES * 60 * 1000) {
-          points += CONFIG.CHAT_BONUS;
-        }
-        
-        // Multiplicador para suscriptores
-        if (user.is_subscriber || (userActivity && userActivity.isSubscriber)) {
-          points *= CONFIG.SUBSCRIBER_MULTIPLIER;
-        }
-        
-        const newBalance = (user.points_balance || 0) + points;
-        
-        // Actualizar en Supabase
-        await supabase.update('users', 
-          { 
-            points_balance: newBalance,
-            updated_at: new Date().toISOString()
-          },
-          { id: user.id }
-        );
-        
-        totalDistributed += points;
-        
-        console.log(`  ✅ ${user.kick_username}: +${points} pts (total: ${newBalance})`);
-      }
-      
-      console.log(`✅ Distribución completada: ${totalDistributed} puntos a ${users.length} usuarios`);
-      
-      // Limpiar usuarios inactivos
-      activeUsers.clear();
-      
-    } catch (error) {
-      console.error('❌ Error distribuyendo puntos:', error);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Error:', err);
+      setError('Error al actualizar');
+    } finally {
+      setSaving(false);
     }
   }
-  
-  // ==================== CONTROL DEL BOT ====================
-  function start() {
-    if (isRunning) {
-      console.warn('⚠️ El bot ya está ejecutándose');
-      return;
-    }
-    
-    isRunning = true;
-    console.log('🚀 Bot iniciado');
-    
-    // Verificar estado del stream cada minuto
-    setInterval(checkIfLive, 60 * 1000);
-    checkIfLive();
-    
-    // Observar el chat
-    observeChat();
-    
-    // Distribuir puntos cada X minutos
-    intervalId = setInterval(distributePoints, CONFIG.INTERVAL_MINUTES * 60 * 1000);
-    
-    console.log('✅ Sistema de puntos activo');
-    console.log('ℹ️ Para detener: stopPointsBot()');
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+      </div>
+    );
   }
-  
-  function stop() {
-    if (!isRunning) {
-      console.warn('⚠️ El bot no está ejecutándose');
-      return;
-    }
-    
-    isRunning = false;
-    
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-    }
-    
-    if (chatObserver) {
-      chatObserver.disconnect();
-      chatObserver = null;
-    }
-    
-    activeUsers.clear();
-    
-    console.log('🛑 Bot detenido');
-  }
-  
-  // ==================== EXPONER FUNCIONES GLOBALES ====================
-  window.startPointsBot = start;
-  window.stopPointsBot = stop;
-  window.pointsBotStatus = () => {
-    console.log('📊 Estado del bot:');
-    console.log('  Running:', isRunning);
-    console.log('  Live:', isLive);
-    console.log('  Active users:', activeUsers.size);
-    console.log('  Users:', Array.from(activeUsers.keys()));
-  };
-  
-  // ==================== INICIO AUTOMÁTICO ====================
-  console.log('✅ Bot cargado correctamente');
-  console.log('');
-  console.log('Comandos disponibles:');
-  console.log('  startPointsBot()  - Iniciar el bot');
-  console.log('  stopPointsBot()   - Detener el bot');
-  console.log('  pointsBotStatus() - Ver estado');
-  console.log('');
-  console.log('💡 Ejecuta startPointsBot() para comenzar');
-  
-})();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black py-12 px-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-8">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="text-purple-400 hover:text-purple-300 flex items-center gap-2 mb-4"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Volver al Dashboard
+          </button>
+          <h1 className="text-4xl font-bold text-white">Mi Perfil</h1>
+        </div>
+
+        <div className="grid gap-6">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 border border-purple-500/30">
+            <h2 className="text-2xl font-bold text-white mb-4">Información</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Saldo</label>
+                <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg p-4">
+                  <span className="text-3xl font-bold text-white">
+                    {user.points_balance?.toLocaleString() || 0}
+                  </span>
+                  <span className="text-purple-200 ml-2">puntos</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 border border-purple-500/30">
+            <h2 className="text-2xl font-bold text-white mb-4">Username de Kick</h2>
+
+            {!user.kick_username && (
+              <div className="bg-yellow-500/10 border border-yellow-500 rounded-lg p-4 mb-6">
+                <p className="text-yellow-400 text-sm">
+                  ⚠️ Vincula tu username de Kick para recibir puntos
+                </p>
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateUsername} className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-300 mb-2">Username de Kick</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">@</span>
+                  <input
+                    type="text"
+                    value={kickUsername}
+                    onChange={(e) => setKickUsername(e.target.value.trim().toLowerCase())}
+                    placeholder="tuusername"
+                    className="w-full pl-8 pr-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                    disabled={saving}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-gray-500">Sin el @</p>
+              </div>
+
+              {error && (
+                <div className="bg-red-500/10 border border-red-500 rounded-lg p-3">
+                  <p className="text-red-400 text-sm">{error}</p>
+                </div>
+              )}
+
+              {success && (
+                <div className="bg-green-500/10 border border-green-500 rounded-lg p-3">
+                  <p className="text-green-400 text-sm">{success}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={saving || kickUsername === user.kick_username}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50"
+              >
+                {saving ? 'Guardando...' : 'Guardar Cambios'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
