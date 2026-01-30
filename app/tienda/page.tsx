@@ -1,73 +1,66 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { RewardCard } from '@/components/shop/RewardCard';
-import { WeeklyReset } from '@/components/shop/WeeklyReset';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth'; // O como se llame tu hook de usuario
+import { RewardCard } from '@/components/shop/RewardCard';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 
 export default function TiendaPage() {
-  const { user } = useAuth();
   const [rewards, setRewards] = useState([]);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchRewards();
+    fetchData();
   }, []);
 
-  async function fetchRewards() {
-    const { data, error } = await supabase
+  async function fetchData() {
+    // Obtenemos el usuario directamente de Supabase sin hooks externos
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser) {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+      setUser(userData);
+    }
+
+    const { data: rewardsData } = await supabase
       .from('rewards_stock')
       .select('*')
       .eq('is_active', true)
-      .order('points_cost', { ascending: true });
+      .order('value_eur', { ascending: true });
 
-    if (!error) setRewards(data);
+    if (rewardsData) setRewards(rewardsData);
     setLoading(false);
   }
 
-  async function handleRedeem(reward: any) {
-    if (!user) return alert('Debes iniciar sesión');
-
-    const { data, error } = await supabase.from('withdrawals').insert([
-      {
-        user_id: user.id,
-        reward_id: reward.id,
-        points_spent: reward.points_cost,
-        wallet_address: user.wallet_address,
-        status: 'pending'
-      }
-    ]);
-
-    if (error) {
-      alert(error.message); // Aquí saltará el mensaje "Solo una tarjeta por semana, jefe"
-    } else {
-      alert('¡Canje realizado con éxito! Espera a que el admin verifique el pago.');
-      fetchRewards(); // Recargar stock
-    }
-  }
-
-  if (loading) return <div className="p-10 text-center">Cargando tienda...</div>;
+  if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Cargando tienda...</div>;
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Tienda de Recompensas</h1>
-          <p className="text-gray-500">Canjea tus puntos por USDT cada semana</p>
+    <div className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <Link href="/dashboard" className="text-blue-400 flex items-center gap-2 mb-6 hover:underline">
+          <ArrowLeft size={20} /> Volver al Dashboard
+        </Link>
+        
+        <div className="mb-10 text-center md:text-left">
+          <h1 className="text-4xl font-black mb-2">TIENDA SEMANAL</h1>
+          <p className="text-gray-400">Canjea tus puntos por premios. Máximo 1 por semana.</p>
         </div>
-        <WeeklyReset />
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {rewards.map((reward) => (
-          <RewardCard
-            key={reward.id}
-            reward={reward}
-            userPoints={user?.points_balance || 0}
-            onRedeem={handleRedeem}
-          />
-        ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {rewards.map((reward: any) => (
+            <RewardCard 
+              key={reward.id} 
+              reward={reward} 
+              userPoints={user?.points_balance || 0}
+              onRedeem={() => {}} 
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
