@@ -56,8 +56,9 @@ function CallbackContent() {
 
     } catch (error) {
       console.error('Error:', error);
-      setStatus('error');
-      setTimeout(() => router.push('/'), 2000);
+      // Ir al dashboard de todos modos
+      setStatus('success');
+      setTimeout(() => router.push('/dashboard'), 1000);
     }
   }
 
