@@ -12,32 +12,71 @@ export default function CallbackContent() {
   useEffect(() => {
     async function handleAuth() {
       try {
-        // Supabase detecta automáticamente el código en la URL y crea la sesión
-        const { data, error } = await supabase.auth.getSession();
+        // 1. Obtener la sesión de la URL (Discord/Supabase)
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-        if (error) throw error;
+        if (sessionError) throw sessionError;
 
-        if (data?.session) {
+        if (session) {
+          const user = session.user;
+          
+          // 2. Verificar si el usuario ya existe en nuestra tabla pública
+          const { data: profile, error: profileError } = await supabase
+            .from('users')
+            .select('kick_nickname')
+            .eq('id', user.id)
+            .single();
+
+          let currentKickNick = profile?.kick_nickname;
+
+          // 3. Si no existe o no tiene Nick de Kick, se lo pedimos
+          if (!currentKickNick) {
+            const nick = window.prompt(
+              "¡Hola! Para que el bot te reconozca, introduce tu nombre de usuario de KICK:"
+            );
+
+            if (nick && nick.trim() !== "") {
+              // Guardar/Actualizar en la tabla pública
+              const { error: upsertError } = await supabase
+                .from('users')
+                .upsert({
+                  id: user.id,
+                  email: user.email,
+                  kick_nickname: nick.trim(),
+                  updated_at: new Date()
+                });
+
+              if (upsertError) throw upsertError;
+              currentKickNick = nick;
+              setMessage(`¡Configurado! Bienvenido ${nick}`);
+            } else {
+              // Si cancela el prompt, avisamos que es necesario
+              setMessage("El nombre de Kick es necesario para el bot.");
+              setStatus('error');
+              setTimeout(() => router.push('/'), 3000);
+              return;
+            }
+          }
+
+          // 4. Todo OK: Guardar localmente y entrar
           setStatus('success');
-          setMessage('¡Sesión iniciada con éxito!');
-          
-          // Guardamos el ID para compatibilidad con tu sistema actual
-          localStorage.setItem('user_id', data.session.user.id);
-          
+          setMessage(`Sesión iniciada como ${currentKickNick || user.email}`);
+          localStorage.setItem('user_id', user.id);
+          localStorage.setItem('kick_nick', currentKickNick || '');
+
           setTimeout(() => {
-            router.push('/'); // O a /dashboard si ya lo tienes creado
+            router.push('/'); 
           }, 1500);
+
         } else {
-          // Si no hay sesión, puede que sea un login de Kick externo
-          // Aquí podrías mantener tu lógica de Kick si la necesitas
           setStatus('error');
-          setMessage('No se encontró una sesión activa.');
+          setMessage('No se pudo recuperar la sesión.');
           setTimeout(() => router.push('/'), 2000);
         }
       } catch (err) {
         console.error('Error en el callback:', err);
         setStatus('error');
-        setMessage('Error al procesar la autenticación');
+        setMessage('Error al procesar la cuenta.');
         setTimeout(() => router.push('/'), 2000);
       }
     }
@@ -53,15 +92,21 @@ export default function CallbackContent() {
         )}
         {status === 'success' && (
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
           </div>
         )}
         {status === 'error' && (
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </div>
         )}
-        <h2 className="text-xl font-bold text-gray-900 mb-2">{status === 'loading' ? 'Procesando...' : status === 'success' ? '¡Éxito!' : 'Error'}</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">
+          {status === 'loading' ? 'Procesando...' : status === 'success' ? '¡Éxito!' : 'Aviso'}
+        </h2>
         <p className="text-gray-600">{message}</p>
       </div>
     </div>
