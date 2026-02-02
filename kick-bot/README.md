@@ -1,126 +1,151 @@
-# 🤖 SlotMasters1K Kick Bot
+# 🤖 Kick Bot Server - SlotMasters1K
 
-Bot automático para acumulación de puntos y comandos de chat en Kick.
+Bot servidor que corre 24/7 en Railway para distribución automática de puntos.
 
-## ✨ Características
+## 🎯 Características
 
-- ✅ **Acumulación automática de puntos** cada 10 minutos
-- ✅ **Comando `!puntos`** para consultar saldo desde el chat
-- ✅ **Detección de actividad en chat** (bonus +2 puntos)
-- ✅ **Multiplicador x2 para suscriptores**
-- ✅ **Anti-spam** (mínimo 10 caracteres, cooldown de 5min)
-- ✅ **Detección automática de stream en vivo**
+- ✅ Conexión automática a eventos de Kick
+- ✅ Detección de stream en vivo
+- ✅ Monitoreo del chat en tiempo real
+- ✅ Distribución automática de puntos cada 10 minutos
+- ✅ Bonus por actividad en chat
+- ✅ Multiplicador x2 para suscriptores
+- ✅ Reconexión automática si se cae
 
-## 📋 Sistema de Puntos
+## 📊 Sistema de Puntos
 
-### Acumulación cada 10 minutos:
-- **5 puntos** base por estar viendo el stream
-- **+2 puntos** bonus si escribió en el chat (mensaje válido)
-- **x2 multiplicador** si es suscriptor
+**Cada 10 minutos (solo cuando el stream está en vivo):**
+- **5 puntos** base (por estar viendo)
+- **+2 puntos** bonus (si escribió en el chat)
+- **x2 multiplicador** (si es suscriptor)
 
-### Ejemplos:
-- Viewer normal (solo viendo): **5 pts**
-- Viewer activo (escribió en chat): **7 pts** (5 + 2)
-- Suscriptor (solo viendo): **10 pts** (5 × 2)
-- Suscriptor activo: **14 pts** ((5 + 2) × 2)
+**Ejemplos:**
+- Viewer normal: 5 pts
+- Viewer activo: 7 pts (5 + 2)
+- Suscriptor: 10 pts (5 × 2)
+- Suscriptor activo: 14 pts ((5 + 2) × 2)
 
-### Anti-spam:
-- Solo mensajes con **mínimo 10 caracteres**
-- **Cooldown de 5 minutos** entre mensajes válidos
-- Ignora comandos del tipo `!claim`, `!puntos`, etc.
+## 🚀 Instalación en Railway
 
-## 🚀 Deployment en Railway
+### 1. Crear nuevo servicio
 
-### 1. Variables de entorno necesarias:
+En tu proyecto de Railway:
+1. Click en **"+ New"**
+2. Selecciona **"Empty Service"**
+3. Nombre: `kick-bot-server`
 
-```env
-# Kick Bot
+### 2. Conectar con GitHub
+
+1. En el servicio, click en **"Settings"**
+2. **"Connect Repo"** → Selecciona tu repo
+3. **"Root Directory"**: `/kick-bot` (o donde subas estos archivos)
+4. **"Watch Paths"**: `/kick-bot/**`
+
+### 3. Variables de entorno
+
+En **"Variables"**, añade:
+
+```
 KICK_CHANNEL=slotmasters1k
-KICK_BOT_USERNAME=SlotMasters1kBot
-KICK_BOT_PASSWORD=620860Domin@
-
-# Supabase (las mismas de la web)
-NEXT_PUBLIC_SUPABASE_URL=https://tougduqztbrgysvvfjgp.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...
+SUPABASE_URL=https://tougduqztbrgysvvfjgp.supabase.co
+SUPABASE_KEY=tu_supabase_anon_key
 ```
 
-### 2. Crear servicio en Railway:
-
-1. En Railway, click en **"+ New"** → **"Empty Service"**
-2. Conectar este repositorio (carpeta `kick-bot`)
-3. Railway detectará automáticamente Node.js
-4. Añadir las variables de entorno
-5. Deploy automático
-
-### 3. Verificar que funciona:
-
-En los logs de Railway deberías ver:
-```
-🤖 SlotMasters1K Points Bot iniciando...
-📺 Canal: slotmasters1k
-👤 Bot: SlotMasters1kBot
-🔐 Autenticando bot en Kick...
-✅ Bot autenticado correctamente
-📡 Canal info: Chat ID=12345, Live=false
-✅ Conectado al chat de Kick
-✅ Bot iniciado correctamente
-⏰ Puntos se distribuirán cada 10 minutos
-```
-
-## 💬 Comandos disponibles
-
-### Para viewers:
-- **`!puntos`** - Muestra tu saldo de puntos actual
-
-### Respuestas del bot:
-- `@username tienes 2,450 puntos 💎` - Usuario registrado
-- `@username No estás registrado. Visita https://comunidad.slotmasters1k.net para registrarte! 🎮` - Usuario sin cuenta
-
-## 🔧 Desarrollo local
+### 4. Desplegar
 
 ```bash
-# Instalar dependencias
-npm install
+# En tu proyecto local
+mkdir kick-bot
+cp bot.js kick-bot/
+cp package.json kick-bot/
 
-# Crear archivo .env
-cp .env.example .env
-
-# Editar .env con tus credenciales
-
-# Iniciar bot
-npm start
-
-# Modo desarrollo (con auto-reload)
-npm run dev
+git add kick-bot/
+git commit -m "Add Kick bot server"
+git push
 ```
 
-## 📊 Logs importantes
+Railway lo detectará y desplegará automáticamente.
 
-El bot registra:
-- ✅ Conexión/desconexión del chat
-- 🔴/⚫ Inicio/fin de stream
-- 💬 Actividad de usuarios (mensajes válidos)
-- 💰 Distribución de puntos cada 10min
-- 📊 Consultas de puntos con `!puntos`
+## 📝 Logs
 
-## ⚠️ Notas
+Para ver los logs del bot:
+1. Ve a Railway
+2. Click en el servicio `kick-bot-server`
+3. Click en **"Deployments"**
+4. Click en el último deployment
+5. Verás logs en tiempo real
 
-- El bot solo distribuye puntos cuando el **stream está en vivo**
-- Los puntos se guardan automáticamente en Supabase
-- Si el stream termina, el bot deja de distribuir puntos hasta el próximo stream
-- El bot se reconecta automáticamente si pierde conexión
+**Logs importantes:**
+```
+🔴 Stream INICIADO - Sistema de puntos activado
+⚫ Stream FINALIZADO - Sistema de puntos pausado
+💬 username ⭐ - actividad registrada
+💰 Distribuyendo puntos...
+  ✅ username: +7 pts (total: 507)
+✅ Distribución completada: 26 puntos a 3 usuarios
+```
+
+## 🔧 Configuración
+
+En `bot.js` puedes ajustar:
+
+```javascript
+const CONFIG = {
+  BASE_POINTS: 5,              // Puntos base
+  CHAT_BONUS: 2,               // Bonus por chat
+  SUBSCRIBER_MULTIPLIER: 2,    // Multiplicador subs
+  INTERVAL_MINUTES: 10,        // Intervalo de distribución
+  MIN_MESSAGE_LENGTH: 10,      // Longitud mínima de mensaje
+  MESSAGE_COOLDOWN: 5 * 60 * 1000  // Cooldown entre mensajes
+};
+```
+
+## ⚠️ Importante
+
+- El bot necesita que los usuarios tengan `kick_username` vinculado en Supabase
+- Usa el panel admin (`/admin`) para vincular usernames de Kick
+- El bot solo da puntos cuando el stream está en vivo
+- Si el bot se cae, Railway lo reinicia automáticamente
 
 ## 🐛 Troubleshooting
 
-### El bot no responde en el chat:
-- Verificar que `KICK_BOT_USERNAME` y `KICK_BOT_PASSWORD` son correctos
-- Verificar que el bot está autenticado (revisar logs)
+### Bot no conecta al chat
+- Verifica que el canal existe en Kick
+- Revisa los logs para ver errores
+- El bot reintenta cada 5 segundos
 
-### No se acumulan puntos:
-- Verificar que el stream está **en vivo**
-- Verificar conexión con Supabase
-- Revisar logs de errores
+### No se distribuyen puntos
+- Verifica que el stream esté en vivo
+- Verifica que los usuarios tengan `kick_username` en Supabase
+- Revisa los logs para ver si hay errores de Supabase
 
-### Usuarios no aparecen:
-- Deben estar registrados en la web primero
-- Verificar que `kick_username` coincide con el nombre en Kick
+### Bot se desconecta
+- Railway lo reinicia automáticamente
+- Verifica los logs para ver la causa
+
+## 📊 Monitoreo
+
+El bot imprime logs cada vez que:
+- Detecta que el stream inicia/termina
+- Un usuario escribe en el chat
+- Distribuye puntos (cada 10 minutos)
+- Hay un error
+
+## 🎮 Funcionamiento
+
+1. Bot verifica cada minuto si el stream está en vivo
+2. Cuando detecta stream en vivo:
+   - Se conecta al chat de Kick
+   - Empieza a monitorear mensajes
+   - Cada 10 minutos distribuye puntos
+3. Cuando el stream termina:
+   - Pausa la distribución
+   - Limpia el registro de actividad
+   - Sigue monitoreando para el próximo stream
+
+## 🔐 Seguridad
+
+- Usa variables de entorno para credenciales
+- Nunca expongas tu SUPABASE_KEY en el código
+- El bot solo tiene permisos de lectura del chat
+- No puede enviar mensajes ni ejecutar comandos de moderador
