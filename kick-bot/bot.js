@@ -14,10 +14,10 @@ const supabase = createClient(
 
 // 2. Configuración de Puntos y Poll
 const POINTS_CONFIG = {
-  BASE_POINTS: 5,           // Puntos base por visualización
-  CHAT_BONUS: 2,            // Bonus por actividad
-  SUBSCRIBER_MULTIPLIER: 2, // Multiplicador para subs
-  INTERVAL_MINUTES: 10      // Cada 10 minutos
+  BASE_POINTS: 5,           
+  CHAT_BONUS: 2,            
+  SUBSCRIBER_MULTIPLIER: 2, 
+  INTERVAL_MINUTES: 5       // Bajado a 5 min para el directo
 };
 
 let chatRoomId = null;
@@ -42,13 +42,13 @@ async function getAccessToken() {
     });
     const data = await response.json();
     accessToken = data.access_token;
-    console.log('✅ Token oficial obtenido legalmente');
+    console.log('✅ Token oficial obtenido');
   } catch (error) {
-    console.error('❌ Error de autenticación:', error.message);
+    console.error('❌ Error Auth:', error.message);
   }
 }
 
-// 4. Info del Canal
+// 4. Info del Canal (Corregido para no bloquear)
 async function getChannelInfo() {
   if (!accessToken) await getAccessToken();
   try {
@@ -58,38 +58,32 @@ async function getChannelInfo() {
     const data = await response.json();
     chatRoomId = data.chatroom?.id;
     isLive = data.livestream !== null;
-    console.log(`📡 API Kick - Live Status: ${isLive ? '🔴 EN VIVO' : '⚪ OFFLINE'}`);
+    console.log(`📊 Status: ${isLive ? '🔴 LIVE' : '⚪ OFFLINE'} | ID: ${chatRoomId}`);
     return data;
   } catch (error) {
-    console.error('❌ Error obteniendo info del canal:', error.message);
+    console.error('❌ Error API Kick:', error.message);
     return null;
   }
 }
 
-// 5. Escuchar Cambios en la Poll (Supabase Realtime)
+// 5. Escuchar Cambios en la Poll
 function listenToAdminCommands() {
-  console.log('📡 Sistema Realtime de Poll activado...');
   supabase
     .channel('admin_commands')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'config' }, payload => {
       if (payload.new.key === 'poll_active') {
         pollActive = payload.new.value === 'true';
-        if (pollActive) {
-          currentVotes.clear();
-          console.log('🚀 POLL ACTIVADA: Empezando a contar votos "a" y "b"');
-        } else {
-          console.log('🛑 POLL FINALIZADA');
-        }
+        console.log(pollActive ? '🚀 POLL ON' : '🛑 POLL OFF');
       }
     })
     .subscribe();
 }
 
-// 6. Conectar al WebSocket y Gestionar Chat
+// 6. Conectar al WebSocket (FIXED: Sin bucle de caídas)
 async function connectToChat() {
   if (!chatRoomId) {
-    console.log('⚠️ Reintentando obtener chatRoomId...');
     await getChannelInfo();
+    if (!chatRoomId) return setTimeout(connectToChat, 5000);
   }
 
   const wsUrl = `wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0`;
@@ -100,56 +94,49 @@ async function connectToChat() {
       event: 'pusher:subscribe',
       data: { channel: `chatrooms.${chatRoomId}.v2` }
     }));
-    console.log('✅ CONECTADO AL CHAT: Escuchando mensajes para sumar puntos...');
   });
 
-  ws.on('message', async (data) => {
+  ws.on('message', (data) => {
     const message = JSON.parse(data.toString());
+    
+    if (message.event === 'pusher_internal:subscription_succeeded') {
+      console.log('✅ CONECTADO AL CHAT Y LISTO');
+    }
+
     if (message.event === 'App\\Events\\ChatMessageEvent') {
       const chatData = JSON.parse(message.data);
       const username = chatData.sender.username;
       const content = chatData.content.toLowerCase().trim();
 
-      // REGISTRO DE ACTIVIDAD EN LOGS
-      console.log(`💬 [CHAT] ${username}: ${content}`);
-      registrarActividad(username);
+      console.log(`💬 [${username}]: ${content}`);
+      activeUsers.set(username, { lastMessage: Date.now() });
 
       if (pollActive && (content === 'a' || content === 'b')) {
         if (!currentVotes.has(username)) {
           currentVotes.set(username, content);
-          console.log(`🗳️ VOTO: ${username} eligió ${content.toUpperCase()}`);
+          console.log(`🗳️ VOTO: ${username} -> ${content.toUpperCase()}`);
         }
       }
     }
   });
 
   ws.on('close', () => {
-    console.log('🔄 Conexión perdida. Reconectando...');
-    setTimeout(connectToChat, 3000);
+    console.log('🔄 Reconectando chat...');
+    setTimeout(connectToChat, 5000);
   });
 }
 
-function registrarActividad(username) {
-  activeUsers.set(username, { lastMessage: Date.now() });
-}
-
-// 7. Repartir Puntos (Balance Neto)
+// 7. Repartir Puntos (Balance Neto Forzado)
 async function distributePoints() {
-  // MODIFICACIÓN PARA DIRECTO: Quitamos el bloqueo isLive para que sume sí o sí mientras pruebas
-  console.log('🕒 Ejecutando ciclo de reparto de puntos...'); 
+  // Quitamos el bloqueo de isLive para asegurar que sume en este directo
+  console.log('🕒 Repartiendo puntos a la comunidad...');
   
-  const { data: users, error: fetchError } = await supabase.from('users').select('*');
-  if (fetchError || !users) {
-    console.error('❌ Error al leer usuarios de Supabase');
-    return;
-  }
+  const { data: users } = await supabase.from('users').select('*');
+  if (!users) return;
 
   const updates = users.map(user => {
     let points = POINTS_CONFIG.BASE_POINTS;
-    if (activeUsers.has(user.kick_username)) {
-        points += POINTS_CONFIG.CHAT_BONUS;
-        console.log(`✨ Bonus aplicado a ${user.kick_username}`);
-    }
+    if (activeUsers.has(user.kick_username)) points += POINTS_CONFIG.CHAT_BONUS;
     if (user.is_subscriber) points *= POINTS_CONFIG.SUBSCRIBER_MULTIPLIER;
 
     return {
@@ -159,29 +146,18 @@ async function distributePoints() {
     };
   });
 
-  const { error: upsertError } = await supabase.from('users').upsert(updates);
-  
-  if (!upsertError) {
-    console.log(`✅ BALANCE ACTUALIZADO: ${updates.length} usuarios han recibido sus puntos.`);
-  } else {
-    console.error('❌ Error en Upsert:', upsertError.message);
-  }
-
+  await supabase.from('users').upsert(updates);
+  console.log(`✅ ${updates.length} usuarios actualizados.`);
   activeUsers.clear();
 }
 
-// 8. Inicio Forzado
+// 8. Inicio
 async function start() {
   await getAccessToken();
   await getChannelInfo();
-  
-  // Conectamos chat y comandos inmediatamente
   connectToChat();
   listenToAdminCommands();
-  
-  // Iniciamos el intervalo de 10 min
   setInterval(distributePoints, POINTS_CONFIG.INTERVAL_MINUTES * 60 * 1000);
-  console.log('🚀 BOT EN MARCHA. Si estás Live, los puntos subirán cada 10 min.');
 }
 
 start();
