@@ -58,16 +58,17 @@ async function getChannelInfo() {
     const data = await response.json();
     chatRoomId = data.chatroom?.id;
     isLive = data.livestream !== null;
+    console.log(`📡 API Kick - Live Status: ${isLive ? '🔴 EN VIVO' : '⚪ OFFLINE'}`);
     return data;
   } catch (error) {
-    console.error('❌ Error obteniendo info:', error.message);
+    console.error('❌ Error obteniendo info del canal:', error.message);
     return null;
   }
 }
 
 // 5. Escuchar Cambios en la Poll (Supabase Realtime)
-// Esto conecta el botón "Lanzar Poll" de tu web con el Bot
 function listenToAdminCommands() {
+  console.log('📡 Sistema Realtime de Poll activado...');
   supabase
     .channel('admin_commands')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'config' }, payload => {
@@ -86,6 +87,11 @@ function listenToAdminCommands() {
 
 // 6. Conectar al WebSocket y Gestionar Chat
 async function connectToChat() {
+  if (!chatRoomId) {
+    console.log('⚠️ Reintentando obtener chatRoomId...');
+    await getChannelInfo();
+  }
+
   const wsUrl = `wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0`;
   const ws = new WebSocket(wsUrl);
 
@@ -94,7 +100,7 @@ async function connectToChat() {
       event: 'pusher:subscribe',
       data: { channel: `chatrooms.${chatRoomId}.v2` }
     }));
-    console.log('✅ Escuchando chat de Kick para balance y votos');
+    console.log('✅ CONECTADO AL CHAT: Escuchando mensajes para sumar puntos...');
   });
 
   ws.on('message', async (data) => {
@@ -104,10 +110,10 @@ async function connectToChat() {
       const username = chatData.sender.username;
       const content = chatData.content.toLowerCase().trim();
 
-      // Registrar actividad para puntos
+      // REGISTRO DE ACTIVIDAD EN LOGS
+      console.log(`💬 [CHAT] ${username}: ${content}`);
       registrarActividad(username);
 
-      // --- LÓGICA DE LA POLL ---
       if (pollActive && (content === 'a' || content === 'b')) {
         if (!currentVotes.has(username)) {
           currentVotes.set(username, content);
@@ -115,6 +121,11 @@ async function connectToChat() {
         }
       }
     }
+  });
+
+  ws.on('close', () => {
+    console.log('🔄 Conexión perdida. Reconectando...');
+    setTimeout(connectToChat, 3000);
   });
 }
 
@@ -124,14 +135,21 @@ function registrarActividad(username) {
 
 // 7. Repartir Puntos (Balance Neto)
 async function distributePoints() {
-  if (!isLive) return;
+  // MODIFICACIÓN PARA DIRECTO: Quitamos el bloqueo isLive para que sume sí o sí mientras pruebas
+  console.log('🕒 Ejecutando ciclo de reparto de puntos...'); 
   
-  const { data: users } = await supabase.from('users').select('*');
-  if (!users) return;
+  const { data: users, error: fetchError } = await supabase.from('users').select('*');
+  if (fetchError || !users) {
+    console.error('❌ Error al leer usuarios de Supabase');
+    return;
+  }
 
   const updates = users.map(user => {
     let points = POINTS_CONFIG.BASE_POINTS;
-    if (activeUsers.has(user.kick_username)) points += POINTS_CONFIG.CHAT_BONUS;
+    if (activeUsers.has(user.kick_username)) {
+        points += POINTS_CONFIG.CHAT_BONUS;
+        console.log(`✨ Bonus aplicado a ${user.kick_username}`);
+    }
     if (user.is_subscriber) points *= POINTS_CONFIG.SUBSCRIBER_MULTIPLIER;
 
     return {
@@ -141,20 +159,29 @@ async function distributePoints() {
     };
   });
 
-  await supabase.upsert(updates);
+  const { error: upsertError } = await supabase.from('users').upsert(updates);
+  
+  if (!upsertError) {
+    console.log(`✅ BALANCE ACTUALIZADO: ${updates.length} usuarios han recibido sus puntos.`);
+  } else {
+    console.error('❌ Error en Upsert:', upsertError.message);
+  }
+
   activeUsers.clear();
-  console.log('✅ Puntos repartidos y balance actualizado');
 }
 
-// 8. Inicio
+// 8. Inicio Forzado
 async function start() {
   await getAccessToken();
   await getChannelInfo();
-  if (chatRoomId) {
-    connectToChat();
-    listenToAdminCommands();
-    setInterval(distributePoints, POINTS_CONFIG.INTERVAL_MINUTES * 60 * 1000);
-  }
+  
+  // Conectamos chat y comandos inmediatamente
+  connectToChat();
+  listenToAdminCommands();
+  
+  // Iniciamos el intervalo de 10 min
+  setInterval(distributePoints, POINTS_CONFIG.INTERVAL_MINUTES * 60 * 1000);
+  console.log('🚀 BOT EN MARCHA. Si estás Live, los puntos subirán cada 10 min.');
 }
 
 start();
