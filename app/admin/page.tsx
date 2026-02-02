@@ -23,7 +23,6 @@ export default function AdminPage() {
     loadUsers();
   }, []);
 
-  // Verifica si eres tú quien intenta entrar
   async function checkAuth() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user?.user_metadata?.provider_id === ADMIN_DISCORD_ID) {
@@ -40,9 +39,9 @@ export default function AdminPage() {
     setLoading(false);
   }
 
-  // 💰 FUNCIÓN: Lluvia de puntos masiva
+  // 💰 FUNCIÓN CORREGIDA PARA RAILWAY
   async function handleLluvia(cantidad: number) {
-    if (!confirm(`¿Repartir +${cantidad} puntos a todos los usuarios registrados?`)) return;
+    if (!confirm(`¿Repartir +${cantidad} puntos a todos los registrados?`)) return;
     setSaving(true);
 
     const updates = users.map(user => ({
@@ -51,8 +50,18 @@ export default function AdminPage() {
       updated_at: new Date().toISOString()
     }));
 
-    const { error } = await supabase.upsert(updates);
-    if (!error) alert(`✅ Éxito: +${cantidad} puntos repartidos.`);
+    // SE HA AÑADIDO .from('users') PARA EVITAR EL ERROR DE COMPILACIÓN
+    const { error } = await supabase
+      .from('users')
+      .upsert(updates); 
+
+    if (!error) {
+      alert(`✅ Éxito: +${cantidad} puntos repartidos al balance neto.`);
+    } else {
+      console.error("Error:", error.message);
+      alert("❌ Error al repartir.");
+    }
+    
     setSaving(false);
     loadUsers();
   }
@@ -74,38 +83,43 @@ export default function AdminPage() {
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white">Cargando...</div>;
   
-  // Bloqueo de seguridad
+  // Bloqueo de seguridad si no eres el admin
   if (!authorized) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white p-4">
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white p-4 text-center">
         <h1 className="text-2xl font-bold text-red-500 mb-4">Acceso Denegado</h1>
-        <p>Solo el administrador de SlotMasters1K puede ver esta página.</p>
-        <button onClick={() => supabase.auth.signInWithOAuth({ provider: 'discord' })} className="mt-4 bg-indigo-600 px-6 py-2 rounded">Iniciar Sesión</button>
+        <p className="max-w-md">Solo el administrador de SlotMasters1K puede acceder a los Ingresos y Gastos.</p>
+        <button 
+          onClick={() => supabase.auth.signInWithOAuth({ provider: 'discord' })} 
+          className="mt-6 bg-indigo-600 hover:bg-indigo-700 px-8 py-3 rounded-lg font-bold transition-all"
+        >
+          Iniciar Sesión con Discord
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black py-8 px-4 font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black py-8 px-4">
       <div className="max-w-6xl mx-auto">
         
-        <div className="mb-8 border-b border-purple-500/20 pb-6 flex justify-between items-center">
-          <div>
-            <h1 className="text-4xl font-bold text-white mb-2">Panel Admin - SlotMasters1K</h1>
-            <p className="text-gray-400">Control de Balance y Premios</p>
-          </div>
+        <div className="mb-8 border-b border-purple-500/20 pb-6">
+          <h1 className="text-4xl font-bold text-white mb-2">Panel Admin - SlotMasters1K</h1>
+          <p className="text-gray-400 text-lg">Control de Empresa y Balance Neto</p>
         </div>
 
         {/* 💰 SECCIÓN: LLUVIA DE PUNTOS */}
-        <div className="mb-8 bg-green-900/20 p-6 rounded-2xl border border-green-500/30">
-          <h2 className="text-xl font-bold text-green-400 mb-4">💰 Lluvia de Puntos (Masivo)</h2>
+        <div className="mb-8 bg-green-900/20 p-6 rounded-2xl border border-green-500/30 shadow-lg">
+          <h2 className="text-xl font-bold text-green-400 mb-4 flex items-center gap-2">
+            <span>💰</span> Lluvia de Puntos (Masivo)
+          </h2>
           <div className="flex flex-wrap gap-3">
             {[10, 20, 30, 40, 50].map((c) => (
               <button 
                 key={c}
                 disabled={saving}
                 onClick={() => handleLluvia(c)}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-transform active:scale-95"
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-all transform active:scale-95 disabled:opacity-50"
               >
                 +{c} Puntos
               </button>
@@ -115,22 +129,22 @@ export default function AdminPage() {
 
         {/* ⚙️ GESTIÓN DE POLL */}
         <div className="mb-12 bg-gradient-to-r from-purple-900/40 to-blue-900/40 p-6 rounded-2xl border border-blue-500/30">
-          <h2 className="text-2xl font-bold text-white mb-4 text-center md:text-left">⚙️ Gestión de Poll (A / B)</h2>
+          <h2 className="text-2xl font-bold text-white mb-4">⚙️ Gestión de Poll (A / B)</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <input 
-              placeholder="¿Qué quieres preguntar en Kick?" 
-              className="bg-gray-900 border border-gray-700 p-3 rounded-lg text-white"
+              placeholder="Pregunta de la encuesta..." 
+              className="bg-gray-900 border border-gray-700 p-3 rounded-lg text-white outline-none focus:border-purple-500"
               value={pollQuestion}
               onChange={(e) => setPollQuestion(e.target.value)}
             />
             <div className="flex gap-2">
               <button 
                 onClick={() => setIsPollActive(true)}
-                className={`px-6 py-2 rounded-lg font-bold flex-1 ${isPollActive ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                className={`px-6 py-2 rounded-lg font-bold flex-1 transition-all ${isPollActive ? 'bg-gray-600 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
               >
                 {isPollActive ? 'Poll en Curso...' : 'Lanzar Poll'}
               </button>
-              <button onClick={() => setIsPollActive(false)} className="bg-red-600/20 text-red-400 border border-red-600/50 px-6 py-2 rounded-lg font-bold">
+              <button onClick={() => setIsPollActive(false)} className="bg-red-600/20 text-red-400 border border-red-600/50 px-6 py-2 rounded-lg font-bold hover:bg-red-600/40">
                 Finalizar
               </button>
             </div>
@@ -141,7 +155,7 @@ export default function AdminPage() {
         <div className="bg-gray-800/50 rounded-2xl border border-purple-500/30 overflow-hidden shadow-2xl">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase">
+              <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase tracking-wider">
                 <tr>
                   <th className="px-6 py-4 text-left">Usuario Discord</th>
                   <th className="px-6 py-4 text-left">Kick Username</th>
@@ -153,8 +167,11 @@ export default function AdminPage() {
               <tbody className="divide-y divide-gray-700">
                 {users.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-800/30 transition-colors">
-                    <td className="px-6 py-4 text-white">{user.discord_username || 'Sin Discord'}</td>
                     <td className="px-6 py-4">
+                      <div className="text-white font-medium">{user.discord_username || 'Sin Discord'}</div>
+                      <div className="text-gray-500 text-xs">{user.discord_user_id}</div>
+                    </td>
+                    <td className="px-6 py-4 text-white">
                       {editing === user.id ? (
                         <input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} className="bg-gray-700 text-white px-2 py-1 rounded w-full border border-purple-500" />
                       ) : (
@@ -167,15 +184,15 @@ export default function AdminPage() {
                       {editing === user.id ? (
                         <input type="number" value={editPoints} onChange={(e) => setEditPoints(Number(e.target.value))} className="bg-gray-700 text-purple-400 font-bold px-2 py-1 rounded w-24 border border-purple-500" />
                       ) : (
-                        <span className="text-purple-400 font-bold">{user.points_balance || 0}</span>
+                        <span className="text-purple-400 font-bold">{user.points_balance?.toLocaleString() || 0}</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">{user.is_subscriber ? '⭐ Sí' : 'No'}</td>
+                    <td className="px-6 py-4 text-white">{user.is_subscriber ? '⭐ Sí' : 'No'}</td>
                     <td className="px-6 py-4 text-center">
                       {editing === user.id ? (
                         <button onClick={() => handleSave(user.id)} className="bg-green-600 px-3 py-1 rounded text-xs text-white">Guardar</button>
                       ) : (
-                        <button onClick={() => { setEditing(user.id); setEditUsername(user.kick_username || ''); setEditPoints(user.points_balance || 0); }} className="bg-blue-600 px-4 py-1 rounded text-xs text-white">Editar</button>
+                        <button onClick={() => { setEditing(user.id); setEditUsername(user.kick_username || ''); setEditPoints(user.points_balance || 0); }} className="bg-blue-600 hover:bg-blue-500 px-4 py-1 rounded text-xs text-white">Editar</button>
                       )}
                     </td>
                   </tr>
