@@ -2,84 +2,40 @@ const WebSocket = require('ws');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 
-// 1. Configuración de Variables
-const KICK_CHANNEL = process.env.KICK_CHANNEL || 'slotmasters1k';
-const CLIENT_ID = process.env.NEXT_PUBLIC_KICK_CLIENT_ID;
-const CLIENT_SECRET = process.env.KICK_CLIENT_SECRET;
+const KICK_CHANNEL = 'slotmasters1k';
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-// 2. Configuración de Puntos
-const POINTS_CONFIG = {
-  BASE_POINTS: 5,           
-  CHAT_BONUS: 2,            
-  SUBSCRIBER_MULTIPLIER: 2, 
-  INTERVAL_MINUTES: 5       
-};
-
+const POINTS_CONFIG = { BASE_POINTS: 5, CHAT_BONUS: 2, SUBSCRIBER_MULTIPLIER: 2, INTERVAL_MINUTES: 5 };
 let chatRoomId = 2623315; 
 let activeUsers = new Map();
-let accessToken = null;
-let pollActive = false; 
 
-// 3. Token
-async function getAccessToken() {
-  try {
-    const response = await fetch('https://api.kick.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        scope: 'chat:read'
-      })
-    });
-    const data = await response.json();
-    accessToken = data.access_token;
-    console.log('✅ Token obtenido');
-  } catch (e) { console.log('❌ Error Token'); }
-}
-
-// 4. Info Canal
-async function getChannelInfo() {
-  if (!accessToken) await getAccessToken();
-  try {
-    const response = await fetch(`https://api.kick.com/public/v1/channels/${KICK_CHANNEL}`, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    const data = await response.json();
-    if (data.chatroom?.id) chatRoomId = data.chatroom.id;
-    console.log(`📊 Canal ID: ${chatRoomId}`);
-  } catch (e) { console.log('⚠️ Usando ID manual'); }
-}
-
-// 5. WebSocket Corregido (Con User-Agent para evitar bloqueos)
+// 1. WebSocket con PING para que no se cierre
 async function connectToChat() {
-  const wsUrl = `wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0`;
-  
-  // Añadimos cabeceras para que Kick no nos eche
-  const ws = new WebSocket(wsUrl, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
+  // Usamos el cluster de Pusher que usa Kick directamente
+  const ws = new WebSocket(`wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0`, {
+    headers: { 'User-Agent': 'Mozilla/5.0' }
   });
 
   ws.on('open', () => {
+    console.log('🔌 Conectando...');
     ws.send(JSON.stringify({
       event: 'pusher:subscribe',
       data: { channel: `chatrooms.${chatRoomId}.v2` }
     }));
+    
+    // Mantener la conexión viva enviando un ping cada 30 segundos
+    setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ event: 'pusher:ping', data: {} }));
+      }
+    }, 30000);
   });
 
   ws.on('message', (data) => {
     const message = JSON.parse(data.toString());
     
     if (message.event === 'pusher_internal:subscription_succeeded') {
-      console.log('✅ CONECTADO AL CHAT Y LISTO');
+      console.log('✅ CONECTADO AL CHAT - ESCUCHANDO...');
     }
 
     if (message.event === 'App\\Events\\ChatMessageEvent') {
@@ -90,15 +46,14 @@ async function connectToChat() {
     }
   });
 
-  ws.on('error', (err) => console.log('❌ Error WS:', err.message));
-
+  ws.on('error', (e) => console.log('❌ Error:', e.message));
   ws.on('close', () => {
-    console.log('🔄 Reconexión...');
+    console.log('🔄 Reintentando...');
     setTimeout(connectToChat, 5000);
   });
 }
 
-// 6. Repartir Puntos
+// 2. Reparto de Puntos
 async function distributePoints() {
   console.log('🕒 Repartiendo puntos...');
   const { data: users } = await supabase.from('users').select('*');
@@ -117,16 +72,10 @@ async function distributePoints() {
   });
 
   await supabase.from('users').upsert(updates);
-  console.log(`✅ Balance actualizado para ${updates.length} usuarios.`);
+  console.log(`✅ Balance actualizado (${updates.length} personas)`);
   activeUsers.clear();
 }
 
-// 7. Inicio
-async function start() {
-  await getAccessToken();
-  await getChannelInfo();
-  connectToChat();
-  setInterval(distributePoints, POINTS_CONFIG.INTERVAL_MINUTES * 60 * 1000);
-}
-
-start();
+// 3. Inicio
+connectToChat();
+setInterval(distributePoints, POINTS_CONFIG.INTERVAL_MINUTES * 60 * 1000);
