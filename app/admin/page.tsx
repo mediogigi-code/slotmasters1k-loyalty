@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
-// 🛡️ RELLENA ESTO: Pon tu ID de Discord para que solo tú entres
-const ADMIN_DISCORD_ID = 'TU_ID_AQUI'; 
+// 🛡️ ADMINISTRADOR AUTORIZADO
+const ADMIN_USERNAME = 'dark6666'; 
 
 export default function AdminPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -25,9 +25,11 @@ export default function AdminPage() {
 
   async function checkAuth() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (user?.user_metadata?.provider_id === ADMIN_DISCORD_ID) {
+    // Verifica si el usuario logueado es dark6666
+    if (user?.user_metadata?.full_name === ADMIN_USERNAME || user?.user_metadata?.name === ADMIN_USERNAME || user?.user_metadata?.custom_claims?.global_name === ADMIN_USERNAME) {
       setAuthorized(true);
     }
+    // Nota: Si al loguear no te deja entrar, dímelo y lo ajustamos al ID numérico que es infalible.
   }
 
   async function loadUsers() {
@@ -39,9 +41,8 @@ export default function AdminPage() {
     setLoading(false);
   }
 
-  // 💰 FUNCIÓN CORREGIDA PARA RAILWAY
   async function handleLluvia(cantidad: number) {
-    if (!confirm(`¿Repartir +${cantidad} puntos a todos los registrados?`)) return;
+    if (!confirm(`¿Repartir +${cantidad} puntos a todos?`)) return;
     setSaving(true);
 
     const updates = users.map(user => ({
@@ -50,16 +51,15 @@ export default function AdminPage() {
       updated_at: new Date().toISOString()
     }));
 
-    // SE HA AÑADIDO .from('users') PARA EVITAR EL ERROR DE COMPILACIÓN
+    // ✅ CORRECCIÓN CRÍTICA PARA EL ERROR DE RAILWAY
     const { error } = await supabase
-      .from('users')
+      .from('users') 
       .upsert(updates); 
 
     if (!error) {
-      alert(`✅ Éxito: +${cantidad} puntos repartidos al balance neto.`);
+      alert(`✅ Lluvia de +${cantidad} puntos completada.`);
     } else {
-      console.error("Error:", error.message);
-      alert("❌ Error al repartir.");
+      alert("❌ Error al repartir: " + error.message);
     }
     
     setSaving(false);
@@ -81,19 +81,18 @@ export default function AdminPage() {
     loadUsers();
   }
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white">Cargando...</div>;
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white font-mono">Verificando Credenciales de dark6666...</div>;
   
-  // Bloqueo de seguridad si no eres el admin
   if (!authorized) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white p-4 text-center">
-        <h1 className="text-2xl font-bold text-red-500 mb-4">Acceso Denegado</h1>
-        <p className="max-w-md">Solo el administrador de SlotMasters1K puede acceder a los Ingresos y Gastos.</p>
+        <h1 className="text-3xl font-bold text-red-600 mb-4">ACCESO RESTRINGIDO</h1>
+        <p className="text-gray-400 mb-8">Esta zona es exclusiva para dark6666.</p>
         <button 
           onClick={() => supabase.auth.signInWithOAuth({ provider: 'discord' })} 
-          className="mt-6 bg-indigo-600 hover:bg-indigo-700 px-8 py-3 rounded-lg font-bold transition-all"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-4 rounded-xl font-black tracking-widest transition-all shadow-[0_0_20px_rgba(79,70,229,0.4)]"
         >
-          Iniciar Sesión con Discord
+          LOGUEAR CON DISCORD
         </button>
       </div>
     );
@@ -102,104 +101,95 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black py-8 px-4">
       <div className="max-w-6xl mx-auto">
-        
-        <div className="mb-8 border-b border-purple-500/20 pb-6">
-          <h1 className="text-4xl font-bold text-white mb-2">Panel Admin - SlotMasters1K</h1>
-          <p className="text-gray-400 text-lg">Control de Empresa y Balance Neto</p>
+        <div className="mb-8 border-b border-purple-500/20 pb-6 flex justify-between items-end">
+          <div>
+            <h1 className="text-4xl font-black text-white mb-2">S1K CONTROL PANEL</h1>
+            <p className="text-purple-400 font-mono text-sm">ADMIN: {ADMIN_USERNAME}</p>
+          </div>
+          <button onClick={() => supabase.auth.signOut()} className="text-xs text-gray-500 hover:text-white underline">Cerrar Sesión</button>
         </div>
 
-        {/* 💰 SECCIÓN: LLUVIA DE PUNTOS */}
-        <div className="mb-8 bg-green-900/20 p-6 rounded-2xl border border-green-500/30 shadow-lg">
-          <h2 className="text-xl font-bold text-green-400 mb-4 flex items-center gap-2">
-            <span>💰</span> Lluvia de Puntos (Masivo)
-          </h2>
-          <div className="flex flex-wrap gap-3">
+        {/* LLUVIA DE PUNTOS */}
+        <div className="mb-8 bg-green-500/10 p-6 rounded-2xl border border-green-500/30">
+          <h2 className="text-xl font-bold text-green-400 mb-4 tracking-tighter uppercase">Lluvia de Puntos Masiva</h2>
+          <div className="flex flex-wrap gap-4">
             {[10, 20, 30, 40, 50].map((c) => (
               <button 
                 key={c}
                 disabled={saving}
                 onClick={() => handleLluvia(c)}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-all transform active:scale-95 disabled:opacity-50"
+                className="bg-green-600 hover:bg-green-500 text-white font-black py-3 px-8 rounded-xl transition-all active:scale-90"
               >
-                +{c} Puntos
+                +{c}
               </button>
             ))}
           </div>
         </div>
 
-        {/* ⚙️ GESTIÓN DE POLL */}
-        <div className="mb-12 bg-gradient-to-r from-purple-900/40 to-blue-900/40 p-6 rounded-2xl border border-blue-500/30">
-          <h2 className="text-2xl font-bold text-white mb-4">⚙️ Gestión de Poll (A / B)</h2>
+        {/* POLL SYSTEM */}
+        <div className="mb-12 bg-purple-600/10 p-6 rounded-2xl border border-purple-500/30">
+          <h2 className="text-xl font-bold text-purple-400 mb-4 uppercase tracking-tighter">Sistema de Poll KICK</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <input 
-              placeholder="Pregunta de la encuesta..." 
-              className="bg-gray-900 border border-gray-700 p-3 rounded-lg text-white outline-none focus:border-purple-500"
+              placeholder="¿Qué quieres preguntar?" 
+              className="bg-gray-900 border border-gray-700 p-4 rounded-xl text-white focus:border-purple-500 outline-none"
               value={pollQuestion}
               onChange={(e) => setPollQuestion(e.target.value)}
             />
             <div className="flex gap-2">
               <button 
                 onClick={() => setIsPollActive(true)}
-                className={`px-6 py-2 rounded-lg font-bold flex-1 transition-all ${isPollActive ? 'bg-gray-600 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                className={`px-8 rounded-xl font-bold flex-1 transition-all ${isPollActive ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
               >
-                {isPollActive ? 'Poll en Curso...' : 'Lanzar Poll'}
+                {isPollActive ? 'POLL ACTIVA' : 'LANZAR POLL'}
               </button>
-              <button onClick={() => setIsPollActive(false)} className="bg-red-600/20 text-red-400 border border-red-600/50 px-6 py-2 rounded-lg font-bold hover:bg-red-600/40">
-                Finalizar
+              <button onClick={() => setIsPollActive(false)} className="bg-red-900/20 text-red-500 border border-red-500/50 px-8 rounded-xl font-bold hover:bg-red-500 hover:text-white">
+                OFF
               </button>
             </div>
           </div>
         </div>
 
         {/* TABLA DE USUARIOS */}
-        <div className="bg-gray-800/50 rounded-2xl border border-purple-500/30 overflow-hidden shadow-2xl">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase tracking-wider">
-                <tr>
-                  <th className="px-6 py-4 text-left">Usuario Discord</th>
-                  <th className="px-6 py-4 text-left">Kick Username</th>
-                  <th className="px-6 py-4 text-left">Puntos (Balance)</th>
-                  <th className="px-6 py-4 text-left">Sub</th>
-                  <th className="px-6 py-4 text-center">Acciones</th>
+        <div className="bg-gray-900/80 rounded-3xl border border-white/5 overflow-hidden backdrop-blur-md">
+          <table className="w-full">
+            <thead className="bg-white/5 text-gray-400 text-[10px] uppercase tracking-[0.2em]">
+              <tr>
+                <th className="px-6 py-5 text-left font-medium">Usuario Discord</th>
+                <th className="px-6 py-5 text-left font-medium">Kick Username</th>
+                <th className="px-6 py-5 text-left font-medium">Puntos Balance</th>
+                <th className="px-6 py-5 text-center font-medium">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {users.map((user) => (
+                <tr key={user.id} className="hover:bg-white/[0.02] transition-colors">
+                  <td className="px-6 py-5 text-white font-bold">{user.discord_username}</td>
+                  <td className="px-6 py-5 font-mono text-sm">
+                    {editing === user.id ? (
+                      <input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} className="bg-gray-800 text-white px-3 py-1 rounded-lg border border-purple-500 outline-none w-full" />
+                    ) : (
+                      <span className={user.kick_username ? "text-blue-400" : "text-gray-600"}>{user.kick_username || '---'}</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-5">
+                    {editing === user.id ? (
+                      <input type="number" value={editPoints} onChange={(e) => setEditPoints(Number(e.target.value))} className="bg-gray-800 text-green-400 font-bold px-3 py-1 rounded-lg border border-purple-500 outline-none w-24" />
+                    ) : (
+                      <span className="text-green-400 font-mono font-bold">{user.points_balance}</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-5 text-center">
+                    {editing === user.id ? (
+                      <button onClick={() => handleSave(user.id)} className="bg-white text-black px-4 py-1 rounded-full text-xs font-black uppercase">Save</button>
+                    ) : (
+                      <button onClick={() => { setEditing(user.id); setEditUsername(user.kick_username || ''); setEditPoints(user.points_balance || 0); }} className="text-white/40 hover:text-white text-xs uppercase tracking-widest font-bold">Edit</button>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
-                {users.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-800/30 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="text-white font-medium">{user.discord_username || 'Sin Discord'}</div>
-                      <div className="text-gray-500 text-xs">{user.discord_user_id}</div>
-                    </td>
-                    <td className="px-6 py-4 text-white">
-                      {editing === user.id ? (
-                        <input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} className="bg-gray-700 text-white px-2 py-1 rounded w-full border border-purple-500" />
-                      ) : (
-                        <span className={user.kick_username ? "text-green-400" : "text-yellow-500"}>
-                          {user.kick_username ? `@${user.kick_username}` : '❌ Sin vincular'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {editing === user.id ? (
-                        <input type="number" value={editPoints} onChange={(e) => setEditPoints(Number(e.target.value))} className="bg-gray-700 text-purple-400 font-bold px-2 py-1 rounded w-24 border border-purple-500" />
-                      ) : (
-                        <span className="text-purple-400 font-bold">{user.points_balance?.toLocaleString() || 0}</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-white">{user.is_subscriber ? '⭐ Sí' : 'No'}</td>
-                    <td className="px-6 py-4 text-center">
-                      {editing === user.id ? (
-                        <button onClick={() => handleSave(user.id)} className="bg-green-600 px-3 py-1 rounded text-xs text-white">Guardar</button>
-                      ) : (
-                        <button onClick={() => { setEditing(user.id); setEditUsername(user.kick_username || ''); setEditPoints(user.points_balance || 0); }} className="bg-blue-600 hover:bg-blue-500 px-4 py-1 rounded text-xs text-white">Editar</button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
