@@ -1,67 +1,32 @@
-const WebSocket = require('ws');
 const { createClient } = require('@supabase/supabase-js');
-const fetch = require('node-fetch');
 
-const KICK_CHANNEL = 'slotmasters1k';
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+// Configuración rápida de Supabase
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL, 
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
-const POINTS_CONFIG = { BASE_POINTS: 5, CHAT_BONUS: 2, SUBSCRIBER_MULTIPLIER: 2, INTERVAL_MINUTES: 5 };
-let chatRoomId = 2623315; 
-let activeUsers = new Map();
+// Configuramos para que reparta puntos cada 5 min
+const POINTS_CONFIG = { 
+  BASE_POINTS: 5, 
+  SUBSCRIBER_MULTIPLIER: 2, 
+  INTERVAL_MINUTES: 5 
+};
 
-// 1. WebSocket con PING para que no se cierre
-async function connectToChat() {
-  // Usamos el cluster de Pusher que usa Kick directamente
-  const ws = new WebSocket(`wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0`, {
-    headers: { 'User-Agent': 'Mozilla/5.0' }
-  });
-
-  ws.on('open', () => {
-    console.log('🔌 Conectando...');
-    ws.send(JSON.stringify({
-      event: 'pusher:subscribe',
-      data: { channel: `chatrooms.${chatRoomId}.v2` }
-    }));
-    
-    // Mantener la conexión viva enviando un ping cada 30 segundos
-    setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ event: 'pusher:ping', data: {} }));
-      }
-    }, 30000);
-  });
-
-  ws.on('message', (data) => {
-    const message = JSON.parse(data.toString());
-    
-    if (message.event === 'pusher_internal:subscription_succeeded') {
-      console.log('✅ CONECTADO AL CHAT - ESCUCHANDO...');
-    }
-
-    if (message.event === 'App\\Events\\ChatMessageEvent') {
-      const chatData = JSON.parse(message.data);
-      const username = chatData.sender.username;
-      console.log(`💬 [${username}] activo`);
-      activeUsers.set(username, { lastMessage: Date.now() });
-    }
-  });
-
-  ws.on('error', (e) => console.log('❌ Error:', e.message));
-  ws.on('close', () => {
-    console.log('🔄 Reintentando...');
-    setTimeout(connectToChat, 5000);
-  });
-}
-
-// 2. Reparto de Puntos
 async function distributePoints() {
-  console.log('🕒 Repartiendo puntos...');
-  const { data: users } = await supabase.from('users').select('*');
-  if (!users) return;
+  console.log('🕒 [S1K BOT] Iniciando reparto de puntos automático...');
+  
+  // Traemos a todos los usuarios de la base de datos
+  const { data: users, error } = await supabase.from('users').select('*');
+  
+  if (error || !users) {
+    console.log('❌ Error al leer usuarios:', error?.message);
+    return;
+  }
 
   const updates = users.map(user => {
     let points = POINTS_CONFIG.BASE_POINTS;
-    if (activeUsers.has(user.kick_username)) points += POINTS_CONFIG.CHAT_BONUS;
+    // Si es sub, le damos el doble (10 puntos)
     if (user.is_subscriber) points *= POINTS_CONFIG.SUBSCRIBER_MULTIPLIER;
 
     return {
@@ -71,11 +36,21 @@ async function distributePoints() {
     };
   });
 
-  await supabase.from('users').upsert(updates);
-  console.log(`✅ Balance actualizado (${updates.length} personas)`);
-  activeUsers.clear();
+  const { error: upsertError } = await supabase.from('users').upsert(updates);
+  
+  if (!upsertError) {
+    console.log(`✅ BALANCE ACTUALIZADO: ${updates.length} usuarios sumaron puntos.`);
+  } else {
+    console.log('❌ Error al actualizar balance:', upsertError.message);
+  }
 }
 
-// 3. Inicio
-connectToChat();
+// Arrancamos el cronómetro de la empresa
+console.log('🚀 BOT EN MODO "SOLO PUNTOS" ACTIVADO');
+console.log(`Puntos cada ${POINTS_CONFIG.INTERVAL_MINUTES} minutos.`);
+
+// Primer reparto a los 10 segundos de encender, para confirmar que va
+setTimeout(distributePoints, 10000);
+
+// Reparto constante cada 5 minutos
 setInterval(distributePoints, POINTS_CONFIG.INTERVAL_MINUTES * 60 * 1000);
