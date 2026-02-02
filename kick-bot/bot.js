@@ -34,7 +34,14 @@ console.log('📺 Canal:', CONFIG.KICK_CHANNEL);
 
 async function getChannelInfo() {
   try {
-    const response = await fetch(`https://kick.com/api/v2/channels/${CONFIG.KICK_CHANNEL}`);
+    const response = await fetch(`https://kick.com/api/v2/channels/${CONFIG.KICK_CHANNEL}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://kick.com/',
+        'Origin': 'https://kick.com'
+      }
+    });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
