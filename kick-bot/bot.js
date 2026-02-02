@@ -12,12 +12,12 @@ const supabase = createClient(
 
 let activeUsers = new Set();
 let accessToken = null;
-let REAL_CHANNEL_ID = null;
+let REAL_CHANNEL_ID = '10262419'; // Empezamos con el que tenemos
 
-// Servidor para Railway
 http.createServer((req, res) => { res.writeHead(200); res.end('S1K System Online'); }).listen(process.env.PORT || 3000);
 
 async function setupBot() {
+  console.log('🚀 Iniciando rastreo de canal...');
   try {
     const tokenRes = await fetch('https://api.kick.com/oauth/token', {
       method: 'POST',
@@ -27,61 +27,64 @@ async function setupBot() {
     const tokenData = await tokenRes.json();
     accessToken = tokenData.access_token;
 
-    // BUSCADOR DE ID REFORZADO
-    const channelRes = await fetch('https://api.kick.com/public/v1/channels/slotmasters1k', {
-        headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+    // INTENTO 1: API Pública Estándar
+    const res1 = await fetch('https://api.kick.com/public/v1/channels/slotmasters1k', {
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
     });
-    const channelData = await channelRes.json();
+    const data1 = await res1.json();
     
-    if (channelData.data && channelData.data.id) {
-      REAL_CHANNEL_ID = channelData.data.id.toString();
-      console.log(`✅ ¡CANAL ENCONTRADO! ID: ${REAL_CHANNEL_ID}`);
+    if (data1.data?.id) {
+        REAL_CHANNEL_ID = data1.data.id.toString();
+        console.log(`✅ ID ENCONTRADO (Método 1): ${REAL_CHANNEL_ID}`);
     } else {
-      // Si falla, usamos el ID que suele ser el estándar para cuentas nuevas
-      REAL_CHANNEL_ID = '10262419'; 
-      console.log(`⚠️ No se pudo auto-detectar. Usando ID manual: ${REAL_CHANNEL_ID}`);
+        // INTENTO 2: API Interna (v2)
+        const res2 = await fetch('https://kick.com/api/v2/channels/slotmasters1k');
+        const data2 = await res2.json();
+        if (data2.id) {
+            REAL_CHANNEL_ID = data2.id.toString();
+            console.log(`✅ ID ENCONTRADO (Método 2): ${REAL_CHANNEL_ID}`);
+        } else {
+            console.log(`⚠️ No se pudo auto-detectar. Usando: ${REAL_CHANNEL_ID}`);
+        }
     }
-  } catch (e) { console.log('❌ Error en setup'); }
+  } catch (e) { console.log('❌ Error en rastreo, usando ID manual.'); }
 }
 
 async function listenToChat() {
-  if (!accessToken || !REAL_CHANNEL_ID) return;
+  if (!accessToken) return;
   try {
     const response = await fetch(`https://api.kick.com/public/v1/channels/${REAL_CHANNEL_ID}/messages`, {
-      headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'User-Agent': 'Mozilla/5.0' }
     });
     const result = await response.json();
     
-    // Si el chat te da 0, intentamos forzar la lectura del slug directamente
-    if (!result.data || result.data.messages.length === 0) {
-        console.log(`🔎 Escaneando canal ${REAL_CHANNEL_ID}... No hay mensajes nuevos.`);
-    } else {
-        result.data.messages.forEach(msg => {
-            if (!activeUsers.has(msg.sender.username)) {
-              activeUsers.add(msg.sender.username);
-              console.log(`🎯 [DETECTADO]: ${msg.sender.username}`);
-            }
-        });
+    const msgs = result.data?.messages || [];
+    // Este log nos dirá si estamos en el sitio correcto
+    console.log(`🔎 [${new Date().toLocaleTimeString()}] Canal ${REAL_CHANNEL_ID} | Mensajes: ${msgs.length}`);
+
+    if (msgs.length > 0) {
+      msgs.forEach(msg => {
+        if (!activeUsers.has(msg.sender.username)) {
+          activeUsers.add(msg.sender.username);
+          console.log(`🎯 [DETECTADO]: ${msg.sender.username}`);
+        }
+      });
     }
-  } catch (e) { }
+  } catch (e) { console.log('⚠️ Error de conexión al chat'); }
 }
 
 async function distributePoints() {
-  console.log('🕒 [Empresa] Ciclo de Balance Neto...');
+  console.log('🕒 [Empresa] Actualizando Balance Neto...');
   if (activeUsers.size === 0) return;
-
   const { data: users } = await supabase.from('users').select('*');
-  const updates = users
-    .filter(u => activeUsers.has(u.kick_username))
-    .map(user => ({
-      id: user.id,
-      points_balance: (user.points_balance || 0) + 7,
-      updated_at: new Date().toISOString()
-    }));
-
+  const updates = users.filter(u => activeUsers.has(u.kick_username)).map(user => ({
+    id: user.id,
+    points_balance: (user.points_balance || 0) + 7,
+    updated_at: new Date().toISOString()
+  }));
   if (updates.length > 0) {
     await supabase.from('users').upsert(updates);
-    console.log(`✅ INGRESOS TOTALES: +7 puntos a ${updates.length} usuarios.`);
+    console.log('✅ INGRESOS TOTALES SUMADOS.');
   }
   activeUsers.clear();
 }
