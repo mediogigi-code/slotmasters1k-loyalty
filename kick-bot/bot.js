@@ -17,11 +17,11 @@ const POINTS_CONFIG = {
   BASE_POINTS: 5,           
   CHAT_BONUS: 2,            
   SUBSCRIBER_MULTIPLIER: 2, 
-  INTERVAL_MINUTES: 5       // Bajado a 5 min para el directo
+  INTERVAL_MINUTES: 5       // Tiempo reducido para testear en directo
 };
 
-let chatRoomId = null;
-let isLive = false;
+let chatRoomId = 2623315; // ⚡ FORZADO: ID manual para slotmasters1k
+let isLive = true;        // ⚡ FORZADO: Siempre true para que sume puntos ya
 let activeUsers = new Map();
 let accessToken = null;
 let pollActive = false; 
@@ -42,13 +42,13 @@ async function getAccessToken() {
     });
     const data = await response.json();
     accessToken = data.access_token;
-    console.log('✅ Token oficial obtenido');
+    console.log('✅ Token oficial obtenido legalmente');
   } catch (error) {
-    console.error('❌ Error Auth:', error.message);
+    console.error('❌ Error de autenticación:', error.message);
   }
 }
 
-// 4. Info del Canal (Corregido para no bloquear)
+// 4. Info del Canal (Modo Emergencia)
 async function getChannelInfo() {
   if (!accessToken) await getAccessToken();
   try {
@@ -56,36 +56,35 @@ async function getChannelInfo() {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
     const data = await response.json();
-    chatRoomId = data.chatroom?.id;
-    isLive = data.livestream !== null;
-    console.log(`📊 Status: ${isLive ? '🔴 LIVE' : '⚪ OFFLINE'} | ID: ${chatRoomId}`);
+    
+    // Si la API falla, mantenemos el ID forzado arriba
+    if (data.chatroom?.id) chatRoomId = data.chatroom.id;
+    
+    console.log(`📊 Sistema listo | ID Canal: ${chatRoomId}`);
     return data;
   } catch (error) {
-    console.error('❌ Error API Kick:', error.message);
+    console.log('⚠️ Usando ID de respaldo para no detener el directo.');
     return null;
   }
 }
 
 // 5. Escuchar Cambios en la Poll
 function listenToAdminCommands() {
+  console.log('📡 Sistema de comandos web activo');
   supabase
     .channel('admin_commands')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'config' }, payload => {
       if (payload.new.key === 'poll_active') {
         pollActive = payload.new.value === 'true';
-        console.log(pollActive ? '🚀 POLL ON' : '🛑 POLL OFF');
+        console.log(pollActive ? '🚀 POLL INICIADA' : '🛑 POLL CERRADA');
       }
     })
     .subscribe();
 }
 
-// 6. Conectar al WebSocket (FIXED: Sin bucle de caídas)
+// 6. Conectar al WebSocket (FIXED)
 async function connectToChat() {
-  if (!chatRoomId) {
-    await getChannelInfo();
-    if (!chatRoomId) return setTimeout(connectToChat, 5000);
-  }
-
+  console.log(`🔌 Conectando al chat de Kick (ID: ${chatRoomId})...`);
   const wsUrl = `wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0`;
   const ws = new WebSocket(wsUrl);
 
@@ -100,7 +99,7 @@ async function connectToChat() {
     const message = JSON.parse(data.toString());
     
     if (message.event === 'pusher_internal:subscription_succeeded') {
-      console.log('✅ CONECTADO AL CHAT Y LISTO');
+      console.log('✅ CONECTADO AL CHAT Y LISTO PARA SUMAR PUNTOS');
     }
 
     if (message.event === 'App\\Events\\ChatMessageEvent') {
@@ -114,22 +113,21 @@ async function connectToChat() {
       if (pollActive && (content === 'a' || content === 'b')) {
         if (!currentVotes.has(username)) {
           currentVotes.set(username, content);
-          console.log(`🗳️ VOTO: ${username} -> ${content.toUpperCase()}`);
+          console.log(`🗳️ VOTO RECIBIDO: ${username} eligió ${content.toUpperCase()}`);
         }
       }
     }
   });
 
   ws.on('close', () => {
-    console.log('🔄 Reconectando chat...');
+    console.log('🔄 Conexión de chat perdida. Reconectando en 5s...');
     setTimeout(connectToChat, 5000);
   });
 }
 
-// 7. Repartir Puntos (Balance Neto Forzado)
+// 7. Repartir Puntos (Balance Neto)
 async function distributePoints() {
-  // Quitamos el bloqueo de isLive para asegurar que sume en este directo
-  console.log('🕒 Repartiendo puntos a la comunidad...');
+  console.log('🕒 Iniciando reparto automático de puntos...');
   
   const { data: users } = await supabase.from('users').select('*');
   if (!users) return;
@@ -146,8 +144,13 @@ async function distributePoints() {
     };
   });
 
-  await supabase.from('users').upsert(updates);
-  console.log(`✅ ${updates.length} usuarios actualizados.`);
+  const { error } = await supabase.from('users').upsert(updates);
+  if (!error) {
+    console.log(`✅ Balance actualizado para ${updates.length} usuarios.`);
+  } else {
+    console.error('❌ Error actualizando balance:', error.message);
+  }
+  
   activeUsers.clear();
 }
 
