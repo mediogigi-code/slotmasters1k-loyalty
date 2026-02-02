@@ -4,6 +4,9 @@ const { createClient } = require('@supabase/supabase-js');
 // ==================== CONFIGURACIÓN ====================
 const CONFIG = {
   KICK_CHANNEL: process.env.KICK_CHANNEL || 'slotmasters1k',
+  KICK_CLIENT_ID: process.env.KICK_CLIENT_ID,
+  KICK_CLIENT_SECRET: process.env.KICK_CLIENT_SECRET,
+  KICK_ACCESS_TOKEN: process.env.KICK_ACCESS_TOKEN, // Lo configuraremos después
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_KEY: process.env.SUPABASE_KEY,
   
@@ -27,29 +30,68 @@ let ws = null;
 let activeUsers = new Map();
 let distributionInterval = null;
 
-console.log('🤖 Kick Bot Server iniciando...');
+console.log('🤖 Kick Bot Server con OAuth iniciando...');
 console.log('📺 Canal:', CONFIG.KICK_CHANNEL);
 
-// ==================== FUNCIONES DE KICK API ====================
+// ==================== FUNCIONES DE KICK API CON OAUTH ====================
 
 async function getChannelInfo() {
   try {
+    const headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    };
+    
+    // Si tenemos access token, lo usamos
+    if (CONFIG.KICK_ACCESS_TOKEN) {
+      headers['Authorization'] = `Bearer ${CONFIG.KICK_ACCESS_TOKEN}`;
+    }
+    
     const response = await fetch(`https://kick.com/api/v2/channels/${CONFIG.KICK_CHANNEL}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Referer': 'https://kick.com/',
-        'Origin': 'https://kick.com'
-      }
+      headers
     });
+    
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
+    
     const data = await response.json();
     return data;
   } catch (error) {
     console.error('❌ Error obteniendo info del canal:', error.message);
     return null;
+  }
+}
+
+async function sendChatMessage(message) {
+  if (!CONFIG.KICK_ACCESS_TOKEN || !chatroomId) {
+    console.warn('⚠️ No se puede enviar mensaje: falta token o chatroom ID');
+    return false;
+  }
+  
+  try {
+    const response = await fetch(`https://kick.com/api/v2/messages/send/${chatroomId}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${CONFIG.KICK_ACCESS_TOKEN}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        content: message,
+        type: 'message'
+      })
+    });
+    
+    if (!response.ok) {
+      console.error('❌ Error enviando mensaje:', response.status);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Error enviando mensaje:', error.message);
+    return false;
   }
 }
 
@@ -118,6 +160,16 @@ function connectToChat() {
         handleChatMessage(JSON.parse(message.data));
       }
       
+      // Evento de suscripción
+      if (message.event === 'App\\Events\\SubscriptionEvent') {
+        handleSubscription(JSON.parse(message.data));
+      }
+      
+      // Evento de follow
+      if (message.event === 'App\\Events\\FollowersUpdated') {
+        handleFollow(JSON.parse(message.data));
+      }
+      
       // Pong para mantener conexión
       if (message.event === 'pusher:ping') {
         ws.send(JSON.stringify({ event: 'pusher:pong' }));
@@ -145,6 +197,12 @@ function handleChatMessage(messageData) {
     
     if (!username || !content) return;
     
+    // Comando !puntos
+    if (content.toLowerCase() === '!puntos') {
+      handlePointsCommand(username);
+      return;
+    }
+    
     // Ignorar comandos y mensajes cortos
     if (content.startsWith('!') || content.length < CONFIG.MIN_MESSAGE_LENGTH) {
       return;
@@ -171,6 +229,45 @@ function handleChatMessage(messageData) {
   } catch (error) {
     console.error('Error procesando mensaje:', error);
   }
+}
+
+async function handlePointsCommand(username) {
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('points_balance')
+      .eq('kick_username', username)
+      .single();
+    
+    if (user) {
+      const points = user.points_balance || 0;
+      await sendChatMessage(`@${username} tienes ${points.toLocaleString()} puntos 💰`);
+      console.log(`📊 Comando !puntos de ${username}: ${points} pts`);
+    } else {
+      await sendChatMessage(`@${username} no estás registrado. Regístrate en https://tu-web.com 🎮`);
+    }
+  } catch (error) {
+    console.error('Error en comando !puntos:', error);
+  }
+}
+
+function handleSubscription(subData) {
+  const username = subData.username;
+  console.log(`🌟 Nueva suscripción: ${username}`);
+  
+  // Actualizar en base de datos
+  supabase
+    .from('users')
+    .update({ is_subscriber: true })
+    .eq('kick_username', username)
+    .then(() => {
+      console.log(`  ✅ ${username} marcado como suscriptor`);
+    });
+}
+
+function handleFollow(followData) {
+  const username = followData.username;
+  console.log(`❤️ Nuevo seguidor: ${username}`);
 }
 
 // ==================== DISTRIBUCIÓN DE PUNTOS ====================
@@ -290,7 +387,7 @@ async function mainLoop() {
 
 console.log('');
 console.log('═══════════════════════════════════════');
-console.log('   🤖 Kick Bot Server - SlotMasters1K');
+console.log('   🤖 Kick Bot con OAuth - SlotMasters1K');
 console.log('═══════════════════════════════════════');
 console.log('');
 
@@ -298,6 +395,11 @@ console.log('');
 if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY) {
   console.error('❌ ERROR: Faltan variables de entorno SUPABASE_URL o SUPABASE_KEY');
   process.exit(1);
+}
+
+if (!CONFIG.KICK_CLIENT_ID || !CONFIG.KICK_CLIENT_SECRET) {
+  console.warn('⚠️ ADVERTENCIA: Faltan credenciales de Kick OAuth');
+  console.warn('   El bot funcionará en modo limitado (solo lectura)');
 }
 
 // Iniciar
@@ -313,4 +415,9 @@ process.on('SIGTERM', () => {
 
 console.log('✅ Bot iniciado correctamente');
 console.log('📊 Monitoreando canal:', CONFIG.KICK_CHANNEL);
+if (CONFIG.KICK_ACCESS_TOKEN) {
+  console.log('🔐 OAuth activado - Comandos habilitados');
+} else {
+  console.log('⚠️  OAuth no configurado - Solo modo lectura');
+}
 console.log('');
