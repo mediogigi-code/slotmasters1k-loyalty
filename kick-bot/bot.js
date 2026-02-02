@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 
-const KICK_CHANNEL = 'slotmasters1k';
+const KICK_CHANNEL_ID = '2623315'; // Tu ID de canal
 const CLIENT_ID = process.env.NEXT_PUBLIC_KICK_CLIENT_ID;
 const CLIENT_SECRET = process.env.KICK_CLIENT_SECRET;
 
@@ -13,6 +13,7 @@ const supabase = createClient(
 let activeUsers = new Set();
 let accessToken = null;
 
+// 1. Obtener Token con los Scopes de tu imagen
 async function getAccessToken() {
   try {
     const response = await fetch('https://api.kick.com/oauth/token', {
@@ -22,74 +23,72 @@ async function getAccessToken() {
         grant_type: 'client_credentials',
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
-        scope: 'chat:read'
+        scope: 'chat:read' // El permiso que tienes marcado
       })
     });
     const data = await response.json();
-    if (data.access_token) {
-      accessToken = data.access_token;
-      console.log('✅ Token oficial obtenido correctamente.');
-    }
+    accessToken = data.access_token;
+    console.log('🔑 Token oficial validado por Kick.');
   } catch (e) {
-    console.log('❌ Error de Token. Revisa las variables en Railway.');
+    console.log('❌ Error crítico de credenciales.');
   }
 }
 
-async function fetchChatMessages() {
-  if (!accessToken) return;
-  
+// 2. Escuchar el Chat sin fallos
+async function listenToChat() {
+  if (!accessToken) await getAccessToken();
+
   try {
-    const response = await fetch(`https://api.kick.com/public/v1/channels/${KICK_CHANNEL}/messages`, {
+    // Consultamos los eventos de mensajes de los últimos 30 segundos
+    const response = await fetch(`https://api.kick.com/public/v1/channels/${KICK_CHANNEL_ID}/messages`, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
-    const data = await response.json();
-    
-    if (data.messages && data.messages.length > 0) {
-      data.messages.forEach(msg => {
+    const result = await response.json();
+
+    // Si hay mensajes, metemos a los usuarios en la lista de reparto
+    if (result.data && result.data.messages) {
+      result.data.messages.forEach(msg => {
         activeUsers.add(msg.sender.username);
+        console.log(`🎯 Usuario fichado: ${msg.sender.username}`);
       });
-      console.log(`📡 Scan chat: ${activeUsers.size} usuarios detectados.`);
     }
   } catch (e) {
-    console.log('⚠️ Error de lectura API. Reintentando en el próximo ciclo.');
+    console.log('⚠️ Buscando actividad...');
   }
 }
 
+// 3. Reparto de Balance Neto (Empresa + Casa)
 async function distributePoints() {
-  console.log('🕒 [BALANCE NETO] Iniciando reparto de 5 minutos...');
-  
+  console.log(`🕒 [S1K] Procesando reparto para ${activeUsers.size} usuarios...`);
+
   if (activeUsers.size === 0) {
-    console.log('ℹ️ Nadie escribió en el chat. No hay puntos que repartir.');
+    console.log('ℹ️ Nadie ha hablado. Balance Neto sin cambios.');
     return;
   }
 
   const { data: users } = await supabase.from('users').select('*');
-  if (!users) return;
-
+  
   const updates = users
     .filter(u => activeUsers.has(u.kick_username))
     .map(user => ({
       id: user.id,
-      points_balance: (user.points_balance || 0) + 7, 
+      points_balance: (user.points_balance || 0) + 7, // 5 Base + 2 Bonus
       updated_at: new Date().toISOString()
     }));
 
   if (updates.length > 0) {
-    const { error } = await supabase.from('users').upsert(updates);
-    if (!error) console.log(`💰 ÉXITO: +7 puntos a ${updates.length} valientes.`);
+    await supabase.from('users').upsert(updates);
+    console.log(`✅ Ingresos Totales actualizados para ${updates.length} miembros.`);
   }
   
-  activeUsers.clear(); 
+  activeUsers.clear(); // Limpiamos para el siguiente directo
 }
 
-// ARRANQUE SECUENCIAL
-async function init() {
+// Arrancamos el motor oficial
+async function startBot() {
   await getAccessToken();
-  console.log('🚀 SISTEMA INICIADO: Escaneando chat cada 30s...');
-  
-  setInterval(fetchChatMessages, 30000); // Lee el chat
-  setInterval(distributePoints, 5 * 60 * 1000); // Reparte puntos
-  setInterval(getAccessToken, 50 * 60 * 1000); // Renueva token cada 50 min
+  setInterval(listenToChat, 20000); // Escanea cada 20 seg para no perder a nadie
+  setInterval(distributePoints, 5 * 60 * 1000); // Reparte cada 5 min
 }
 
-init();
+startBot();
