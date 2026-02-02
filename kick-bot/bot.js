@@ -1,7 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 
-// 1. Configuración de la Empresa
 const KICK_CHANNEL = 'slotmasters1k';
 const CLIENT_ID = process.env.NEXT_PUBLIC_KICK_CLIENT_ID;
 const CLIENT_SECRET = process.env.KICK_CLIENT_SECRET;
@@ -14,7 +13,6 @@ const supabase = createClient(
 let activeUsers = new Set();
 let accessToken = null;
 
-// 2. Obtener Token de Acceso Oficial
 async function getAccessToken() {
   try {
     const response = await fetch('https://api.kick.com/oauth/token', {
@@ -28,16 +26,17 @@ async function getAccessToken() {
       })
     });
     const data = await response.json();
-    accessToken = data.access_token;
-    console.log('✅ Token oficial renovado.');
+    if (data.access_token) {
+      accessToken = data.access_token;
+      console.log('✅ Token oficial obtenido correctamente.');
+    }
   } catch (e) {
-    console.log('❌ Error obteniendo Token. Revisa CLIENT_ID/SECRET en Railway.');
+    console.log('❌ Error de Token. Revisa las variables en Railway.');
   }
 }
 
-// 3. Consultar mensajes (Sustituye al WebSocket bloqueado)
 async function fetchChatMessages() {
-  if (!accessToken) await getAccessToken();
+  if (!accessToken) return;
   
   try {
     const response = await fetch(`https://api.kick.com/public/v1/channels/${KICK_CHANNEL}/messages`, {
@@ -48,51 +47,49 @@ async function fetchChatMessages() {
     if (data.messages && data.messages.length > 0) {
       data.messages.forEach(msg => {
         activeUsers.add(msg.sender.username);
-        console.log(`💬 Usuario detectado en API: [${msg.sender.username}]`);
       });
+      console.log(`📡 Scan chat: ${activeUsers.size} usuarios detectados.`);
     }
   } catch (e) {
-    console.log('⚠️ Error de conexión con API de Kick. Reintentando...');
+    console.log('⚠️ Error de lectura API. Reintentando en el próximo ciclo.');
   }
 }
 
-// 4. Reparto de Balance Neto (Cada 5 minutos)
 async function distributePoints() {
-  console.log('🕒 Iniciando ciclo de 5 min...');
+  console.log('🕒 [BALANCE NETO] Iniciando reparto de 5 minutos...');
   
   if (activeUsers.size === 0) {
-    console.log('ℹ️ No hay actividad real detectada en el chat.');
+    console.log('ℹ️ Nadie escribió en el chat. No hay puntos que repartir.');
     return;
   }
 
   const { data: users } = await supabase.from('users').select('*');
-  
+  if (!users) return;
+
   const updates = users
     .filter(u => activeUsers.has(u.kick_username))
     .map(user => ({
       id: user.id,
-      points_balance: (user.points_balance || 0) + 7, // 5 base + 2 bonus
+      points_balance: (user.points_balance || 0) + 7, 
       updated_at: new Date().toISOString()
     }));
 
   if (updates.length > 0) {
-    await supabase.from('users').upsert(updates);
-    console.log(`✅ BALANCE NETO ACTUALIZADO: +7 puntos para ${updates.length} presentes.`);
+    const { error } = await supabase.from('users').upsert(updates);
+    if (!error) console.log(`💰 ÉXITO: +7 puntos a ${updates.length} valientes.`);
   }
   
-  activeUsers.clear(); // Limpiamos para la siguiente ronda
+  activeUsers.clear(); 
 }
 
-// 5. Ejecución Programada
-async function start() {
+// ARRANQUE SECUENCIAL
+async function init() {
   await getAccessToken();
-  console.log('🚀 BOT INICIADO (Modo API Estable)');
+  console.log('🚀 SISTEMA INICIADO: Escaneando chat cada 30s...');
   
-  // Escaneamos el chat cada 30 segundos
-  setInterval(fetchChatMessages, 30000);
-  
-  // Repartimos puntos cada 5 minutos
-  setInterval(distributePoints, 5 * 60 * 1000);
+  setInterval(fetchChatMessages, 30000); // Lee el chat
+  setInterval(distributePoints, 5 * 60 * 1000); // Reparte puntos
+  setInterval(getAccessToken, 50 * 60 * 1000); // Renueva token cada 50 min
 }
 
-start();
+init();
