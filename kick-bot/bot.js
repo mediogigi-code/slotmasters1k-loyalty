@@ -2,7 +2,7 @@ const WebSocket = require('ws');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 
-// 1. Configuración de Variables (Railway)
+// 1. Configuración de Variables
 const KICK_CHANNEL = process.env.KICK_CHANNEL || 'slotmasters1k';
 const CLIENT_ID = process.env.NEXT_PUBLIC_KICK_CLIENT_ID;
 const CLIENT_SECRET = process.env.KICK_CLIENT_SECRET;
@@ -12,22 +12,20 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// 2. Configuración de Puntos y Poll
+// 2. Configuración de Puntos
 const POINTS_CONFIG = {
   BASE_POINTS: 5,           
   CHAT_BONUS: 2,            
   SUBSCRIBER_MULTIPLIER: 2, 
-  INTERVAL_MINUTES: 5       // Tiempo reducido para testear en directo
+  INTERVAL_MINUTES: 5       
 };
 
-let chatRoomId = 2623315; // ⚡ FORZADO: ID manual para slotmasters1k
-let isLive = true;        // ⚡ FORZADO: Siempre true para que sume puntos ya
+let chatRoomId = 2623315; 
 let activeUsers = new Map();
 let accessToken = null;
 let pollActive = false; 
-let currentVotes = new Map();
 
-// 3. Obtener Token Oficial
+// 3. Token
 async function getAccessToken() {
   try {
     const response = await fetch('https://api.kick.com/oauth/token', {
@@ -42,13 +40,11 @@ async function getAccessToken() {
     });
     const data = await response.json();
     accessToken = data.access_token;
-    console.log('✅ Token oficial obtenido legalmente');
-  } catch (error) {
-    console.error('❌ Error de autenticación:', error.message);
-  }
+    console.log('✅ Token obtenido');
+  } catch (e) { console.log('❌ Error Token'); }
 }
 
-// 4. Info del Canal (Modo Emergencia)
+// 4. Info Canal
 async function getChannelInfo() {
   if (!accessToken) await getAccessToken();
   try {
@@ -56,37 +52,21 @@ async function getChannelInfo() {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
     const data = await response.json();
-    
-    // Si la API falla, mantenemos el ID forzado arriba
     if (data.chatroom?.id) chatRoomId = data.chatroom.id;
-    
-    console.log(`📊 Sistema listo | ID Canal: ${chatRoomId}`);
-    return data;
-  } catch (error) {
-    console.log('⚠️ Usando ID de respaldo para no detener el directo.');
-    return null;
-  }
+    console.log(`📊 Canal ID: ${chatRoomId}`);
+  } catch (e) { console.log('⚠️ Usando ID manual'); }
 }
 
-// 5. Escuchar Cambios en la Poll
-function listenToAdminCommands() {
-  console.log('📡 Sistema de comandos web activo');
-  supabase
-    .channel('admin_commands')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'config' }, payload => {
-      if (payload.new.key === 'poll_active') {
-        pollActive = payload.new.value === 'true';
-        console.log(pollActive ? '🚀 POLL INICIADA' : '🛑 POLL CERRADA');
-      }
-    })
-    .subscribe();
-}
-
-// 6. Conectar al WebSocket (FIXED)
+// 5. WebSocket Corregido (Con User-Agent para evitar bloqueos)
 async function connectToChat() {
-  console.log(`🔌 Conectando al chat de Kick (ID: ${chatRoomId})...`);
   const wsUrl = `wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0`;
-  const ws = new WebSocket(wsUrl);
+  
+  // Añadimos cabeceras para que Kick no nos eche
+  const ws = new WebSocket(wsUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+  });
 
   ws.on('open', () => {
     ws.send(JSON.stringify({
@@ -99,36 +79,28 @@ async function connectToChat() {
     const message = JSON.parse(data.toString());
     
     if (message.event === 'pusher_internal:subscription_succeeded') {
-      console.log('✅ CONECTADO AL CHAT Y LISTO PARA SUMAR PUNTOS');
+      console.log('✅ CONECTADO AL CHAT Y LISTO');
     }
 
     if (message.event === 'App\\Events\\ChatMessageEvent') {
       const chatData = JSON.parse(message.data);
       const username = chatData.sender.username;
-      const content = chatData.content.toLowerCase().trim();
-
-      console.log(`💬 [${username}]: ${content}`);
+      console.log(`💬 [${username}] activo`);
       activeUsers.set(username, { lastMessage: Date.now() });
-
-      if (pollActive && (content === 'a' || content === 'b')) {
-        if (!currentVotes.has(username)) {
-          currentVotes.set(username, content);
-          console.log(`🗳️ VOTO RECIBIDO: ${username} eligió ${content.toUpperCase()}`);
-        }
-      }
     }
   });
 
+  ws.on('error', (err) => console.log('❌ Error WS:', err.message));
+
   ws.on('close', () => {
-    console.log('🔄 Conexión de chat perdida. Reconectando en 5s...');
+    console.log('🔄 Reconexión...');
     setTimeout(connectToChat, 5000);
   });
 }
 
-// 7. Repartir Puntos (Balance Neto)
+// 6. Repartir Puntos
 async function distributePoints() {
-  console.log('🕒 Iniciando reparto automático de puntos...');
-  
+  console.log('🕒 Repartiendo puntos...');
   const { data: users } = await supabase.from('users').select('*');
   if (!users) return;
 
@@ -144,22 +116,16 @@ async function distributePoints() {
     };
   });
 
-  const { error } = await supabase.from('users').upsert(updates);
-  if (!error) {
-    console.log(`✅ Balance actualizado para ${updates.length} usuarios.`);
-  } else {
-    console.error('❌ Error actualizando balance:', error.message);
-  }
-  
+  await supabase.from('users').upsert(updates);
+  console.log(`✅ Balance actualizado para ${updates.length} usuarios.`);
   activeUsers.clear();
 }
 
-// 8. Inicio
+// 7. Inicio
 async function start() {
   await getAccessToken();
   await getChannelInfo();
   connectToChat();
-  listenToAdminCommands();
   setInterval(distributePoints, POINTS_CONFIG.INTERVAL_MINUTES * 60 * 1000);
 }
 
