@@ -24,10 +24,8 @@ let chatRoomId = null;
 let isLive = false;
 let activeUsers = new Map();
 let accessToken = null;
-
-// --- NUEVAS VARIABLES PARA LA POLL ---
-let pollActive = false; // Se activará desde tu Panel Admin
-let currentVotes = new Map(); // Para que nadie vote dos veces
+let pollActive = false; 
+let currentVotes = new Map();
 
 // 3. Obtener Token Oficial
 async function getAccessToken() {
@@ -67,7 +65,26 @@ async function getChannelInfo() {
   }
 }
 
-// 5. Conectar al WebSocket y Gestionar Poll
+// 5. Escuchar Cambios en la Poll (Supabase Realtime)
+// Esto conecta el botón "Lanzar Poll" de tu web con el Bot
+function listenToAdminCommands() {
+  supabase
+    .channel('admin_commands')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'config' }, payload => {
+      if (payload.new.key === 'poll_active') {
+        pollActive = payload.new.value === 'true';
+        if (pollActive) {
+          currentVotes.clear();
+          console.log('🚀 POLL ACTIVADA: Empezando a contar votos "a" y "b"');
+        } else {
+          console.log('🛑 POLL FINALIZADA');
+        }
+      }
+    })
+    .subscribe();
+}
+
+// 6. Conectar al WebSocket y Gestionar Chat
 async function connectToChat() {
   const wsUrl = `wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0`;
   const ws = new WebSocket(wsUrl);
@@ -77,7 +94,7 @@ async function connectToChat() {
       event: 'pusher:subscribe',
       data: { channel: `chatrooms.${chatRoomId}.v2` }
     }));
-    console.log('✅ Escuchando chat y sistema de Poll activo');
+    console.log('✅ Escuchando chat de Kick para balance y votos');
   });
 
   ws.on('message', async (data) => {
@@ -87,17 +104,14 @@ async function connectToChat() {
       const username = chatData.sender.username;
       const content = chatData.content.toLowerCase().trim();
 
-      // Registrar actividad normal para puntos
+      // Registrar actividad para puntos
       registrarActividad(username);
 
-      // --- LÓGICA DE LA POLL (A o B) ---
-      if (pollActive) {
-        if (content === 'a' || content === 'b') {
-          if (!currentVotes.has(username)) {
-            currentVotes.set(username, content);
-            console.log(`🗳️ VOTO RECIBIDO: ${username} votó por ${content.toUpperCase()}`);
-            // Aquí podrías sumar puntos extra por votar si quisieras
-          }
+      // --- LÓGICA DE LA POLL ---
+      if (pollActive && (content === 'a' || content === 'b')) {
+        if (!currentVotes.has(username)) {
+          currentVotes.set(username, content);
+          console.log(`🗳️ VOTO: ${username} eligió ${content.toUpperCase()}`);
         }
       }
     }
@@ -108,7 +122,7 @@ function registrarActividad(username) {
   activeUsers.set(username, { lastMessage: Date.now() });
 }
 
-// 6. Repartir Puntos
+// 7. Repartir Puntos (Balance Neto)
 async function distributePoints() {
   if (!isLive) return;
   
@@ -129,15 +143,16 @@ async function distributePoints() {
 
   await supabase.upsert(updates);
   activeUsers.clear();
-  console.log('✅ Balance neto actualizado en Supabase');
+  console.log('✅ Puntos repartidos y balance actualizado');
 }
 
-// 7. Inicio
+// 8. Inicio
 async function start() {
   await getAccessToken();
   await getChannelInfo();
   if (chatRoomId) {
     connectToChat();
+    listenToAdminCommands();
     setInterval(distributePoints, POINTS_CONFIG.INTERVAL_MINUTES * 60 * 1000);
   }
 }
