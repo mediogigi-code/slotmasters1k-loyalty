@@ -28,12 +28,18 @@ async function setupBot() {
     accessToken = tokenData.access_token;
     console.log('✅ Conexión con Kick establecida.');
 
-    const channelRes = await fetch('https://api.kick.com/public/v1/channels/slotmasters1k');
+    // Buscamos el ID con cabeceras para que no nos bloqueen
+    const channelRes = await fetch('https://api.kick.com/public/v1/channels/slotmasters1k', {
+        headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+    });
     const channelData = await channelRes.json();
     
     if (channelData.data && channelData.data.id) {
       REAL_CHANNEL_ID = channelData.data.id;
-      console.log(`📡 Vigilando canal ID: ${REAL_CHANNEL_ID} (slotmasters1k)`);
+      console.log(`📡 Vigilando canal ID: ${REAL_CHANNEL_ID}`);
+    } else {
+      console.log('⚠️ No se encontró el ID. Usando ID por defecto.');
+      REAL_CHANNEL_ID = '10262419'; 
     }
   } catch (e) { console.log('❌ Error en el arranque: ' + e.message); }
 }
@@ -57,9 +63,9 @@ async function listenToChat() {
 }
 
 async function distributePoints() {
-  console.log('🕒 [Empresa] Procesando Balance Neto del ciclo...');
+  console.log('🕒 [Empresa] Ciclo de Balance Neto...');
   if (activeUsers.size === 0) {
-    console.log('ℹ️ Sin actividad en los últimos 5 min.');
+    console.log('ℹ️ Sin actividad en este ciclo.');
     return;
   }
   const { data: users } = await supabase.from('users').select('*');
@@ -77,7 +83,7 @@ async function distributePoints() {
 
 async function init() {
   await setupBot();
-  setInterval(listenToChat, 10000);
+  setInterval(listenToChat, 15000);
   setInterval(distributePoints, 300000);
 }
 init();
