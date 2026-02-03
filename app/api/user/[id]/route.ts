@@ -29,13 +29,23 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      discord_username: user.discord_username || 'Usuario',
-      kick_username: user.kick_username || null,
-      points_balance: user.points_balance || 0,
-      is_subscriber: user.is_subscriber || false,
-      avatar_url: user.discord_avatar_url || null
-    });
+    return NextResponse.json(
+      {
+        discord_username: user.discord_username || 'Usuario',
+        kick_username: user.kick_username || null,
+        points_balance: user.points_balance || 0,
+        is_subscriber: user.is_subscriber || false,
+        avatar_url: user.discord_avatar_url || null
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store'
+        }
+      }
+    );
 
   } catch (error) {
     console.error('Error en /api/user/[id]:', error);
