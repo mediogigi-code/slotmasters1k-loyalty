@@ -6,6 +6,21 @@ const BASE_POINTS = 5;
 const CHAT_BONUS = 2;
 const SUBSCRIBER_MULTIPLIER = 2;
 
+// Headers CORS para la extensión
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Manejar preflight request
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const { user_id, chat_active, timestamp } = await request.json();
@@ -14,7 +29,7 @@ export async function POST(request: Request) {
     if (!user_id) {
       return NextResponse.json(
         { error: 'User ID es requerido' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -28,7 +43,7 @@ export async function POST(request: Request) {
     if (userError || !user) {
       return NextResponse.json(
         { error: 'Usuario no encontrado' },
-        { status: 404 }
+        { status: 404, headers: corsHeaders }
       );
     }
 
@@ -44,7 +59,7 @@ export async function POST(request: Request) {
             error: 'Debes esperar 10 minutos entre reclamaciones',
             next_claim_in: Math.ceil(10 - minutesSinceLastUpdate)
           },
-          { status: 429 }
+          { status: 429, headers: corsHeaders }
         );
       }
     }
@@ -78,35 +93,41 @@ export async function POST(request: Request) {
       console.error('Error actualizando puntos:', updateError);
       return NextResponse.json(
         { error: 'Error al actualizar puntos' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
-    // Log para tracking (opcional)
+    // Log para tracking
     console.log(`✅ Puntos reclamados: ${user.kick_username || user_id} +${pointsEarned} pts (Total: ${newBalance})`);
 
-    return NextResponse.json({
-      success: true,
-      points_earned: pointsEarned,
-      total_points: newBalance,
-      message: 'Puntos reclamados exitosamente'
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        points_earned: pointsEarned,
+        total_points: newBalance,
+        message: 'Puntos reclamados exitosamente'
+      },
+      { headers: corsHeaders }
+    );
 
   } catch (error) {
     console.error('Error en /api/points/claim:', error);
     return NextResponse.json(
       { error: 'Error interno del servidor' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
 
-// Opcionalmente, permite GET para verificar estado
+// Endpoint de verificación
 export async function GET(request: Request) {
-  return NextResponse.json({
-    status: 'ok',
-    endpoint: '/api/points/claim',
-    method: 'POST',
-    description: 'Endpoint para reclamar puntos de lealtad'
-  });
+  return NextResponse.json(
+    {
+      status: 'ok',
+      endpoint: '/api/points/claim',
+      method: 'POST',
+      description: 'Endpoint para reclamar puntos de lealtad'
+    },
+    { headers: corsHeaders }
+  );
 }
