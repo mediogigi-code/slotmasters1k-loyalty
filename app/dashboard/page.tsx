@@ -51,7 +51,6 @@ export default function DashboardPage() {
       }
     } catch (error) {
       console.error('Error cargando ronda:', error);
-      setCurrentRound(null);
     }
   }
 
@@ -78,7 +77,6 @@ export default function DashboardPage() {
         setMessage(`❌ ${data.error}`);
       }
     } catch (error) {
-      console.error('Error en apuesta:', error);
       setMessage('❌ Error al realizar apuesta');
     } finally {
       setIsPlacingBet(false);
@@ -87,7 +85,7 @@ export default function DashboardPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-white text-xl">Cargando...</div>
       </div>
     );
@@ -98,39 +96,86 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 py-12 px-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header con Avatar */}
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 mb-8 border border-white/20">
           <div className="flex items-center gap-6 mb-4">
-            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-blue-400 shadow-2xl flex-shrink-0">
+            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-blue-400 flex-shrink-0">
               <Image 
                 src="/avatar.png" 
-                alt="Avatar SlotMasters1K"
+                alt="Avatar"
                 width={96}
                 height={96}
                 className="w-full h-full object-cover"
-                priority
               />
             </div>
             <div>
               <h1 className="text-4xl font-bold text-white mb-2">
                 ¡Bienvenido, {userData?.discord_username || session.user?.name || 'Usuario'}!
               </h1>
-              {/* ESTO ES PARA PROBAR SI ACTUALIZA */}
-              <p className="text-yellow-400 font-bold text-xl animate-pulse">
+              <p className="text-yellow-400 font-bold text-xl">
                 🚀 CONTROL DE APUESTAS ACTIVADO - VERSIÓN 2026
               </p>
-              <p className="text-blue-200 mt-2">Panel de Usuario - SlotMasters1K</p>
             </div>
           </div>
         </div>
 
-        {/* Stats Grid */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 shadow-2xl">
+          <div className="bg-blue-600 rounded-2xl p-6">
             <div className="text-white/80 text-sm mb-2">Mis Puntos (Balance Neto)</div>
-            <div className="text-4xl font-bold text-white mb-2">
-              {userData?.points_balance || 0}
-            </div>
-            <div className="text-white/60 text-xs">Puntos disponibles para jugar</div>
+            <div className="text-4xl font-bold text-white">{userData?.points_balance || 0}</div>
           </div>
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 shadow-2xl">
+          <div className="bg-purple-600 rounded-2xl p-6">
+            <div className="text-white/80 text-sm mb-2">Estado</div>
+            <div className="text-2xl font-bold text-white">{userData?.is_subscriber ? '⭐ VIP' : '👤 Normal'}</div>
+          </div>
+          <div className="bg-green-600 rounded-2xl p-6">
+            <div className="text-white/80 text-sm mb-2">Usuario Kick (Ingresos)</div>
+            <div className="text-2xl font-bold text-white">{userData?.kick_username || 'No vinculado'}</div>
+          </div>
+        </div>
+
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 mb-8 border border-white/20">
+          <h2 className="text-3xl font-bold text-white mb-6">🎲 Apuestas en Vivo</h2>
+          {currentRound && currentRound.status === 'open' ? (
+            <div>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <button
+                  onClick={() => placeBet('A')}
+                  disabled={isPlacingBet || (userData?.points_balance || 0) < 10}
+                  className="bg-red-500 hover:bg-red-600 text-white font-bold text-2xl py-12 rounded-xl transition-all transform hover:scale-105 disabled:opacity-50"
+                >
+                  🅰️ OPCIÓN A
+                  <div className="text-sm font-normal mt-2">{currentRound.totalA || 0} pts en bote</div>
+                </button>
+                <button
+                  onClick={() => placeBet('B')}
+                  disabled={isPlacingBet || (userData?.points_balance || 0) < 10}
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold text-2xl py-12 rounded-xl transition-all transform hover:scale-105 disabled:opacity-50"
+                >
+                  🅱️ OPCIÓN B
+                  <div className="text-sm font-normal mt-2">{currentRound.totalB || 0} pts en bote</div>
+                </button>
+              </div>
+              <div className="mb-6">
+                <label className="text-white text-sm mb-2 block">Cantidad a apostar (Gastos):</label>
+                <input
+                  type="number"
+                  value={betAmount}
+                  onChange={(e) => setBetAmount(Number(e.target.value))}
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white text-lg"
+                  disabled={isPlacingBet}
+                />
+              </div>
+              {message && (
+                <div className={`p-4 rounded-xl mb-4 ${message.includes('✅') ? 'bg-green-500/20 text-green-200' : 'bg-red-500/20 text-red-200'}`}>
+                  {message}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-white/60 text-xl">⏳ Esperando a que el streamer inicie ronda...</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
