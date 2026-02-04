@@ -8,8 +8,8 @@ import Image from 'next/image';
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [userData, setUserData] = useState(null);
-  const [currentRound, setCurrentRound] = useState(null);
+  const [userData, setUserData] = useState<any>(null);
+  const [currentRound, setCurrentRound] = useState<any>(null);
   const [betAmount, setBetAmount] = useState(50);
   const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [message, setMessage] = useState('');
@@ -54,7 +54,7 @@ export default function DashboardPage() {
     }
   }
 
-  async function placeBet(option) {
+  async function placeBet(option: 'A' | 'B') {
     if (!session?.user?.id || !currentRound) return;
 
     setIsPlacingBet(true);
