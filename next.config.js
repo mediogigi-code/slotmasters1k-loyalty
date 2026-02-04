@@ -5,7 +5,10 @@ const nextConfig = {
     unoptimized: true,
   },
   
-  // Headers CORS para la extensión
+  experimental: {
+    isrMemoryCacheSize: 0,
+  },
+  
   async headers() {
     return [
       {
@@ -15,6 +18,12 @@ const nextConfig = {
           { key: 'Access-Control-Allow-Origin', value: 'https://kick.com' },
           { key: 'Access-Control-Allow-Methods', value: 'GET,DELETE,PATCH,POST,PUT,OPTIONS' },
           { key: 'Access-Control-Allow-Headers', value: 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization' },
+        ],
+      },
+      {
+        source: '/dashboard',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, must-revalidate' },
         ],
       },
     ];
