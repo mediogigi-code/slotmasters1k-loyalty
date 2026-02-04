@@ -112,7 +112,7 @@ export default function DashboardPage() {
                 ¡Bienvenido, {userData?.discord_username || session.user?.name || 'Usuario'}!
               </h1>
               <p className="text-yellow-400 font-bold text-xl">
-                🚀 CONTROL DE APUESTAS ACTIVADO - VERSIÓN 2026
+                🚀 CONTROL DE APUESTAS ACTIVADO - VERSIÓN 2026-VERSIÓN 2026.1 - (ACTUALIZADO)
               </p>
             </div>
           </div>
