@@ -28,6 +28,8 @@ export default function DashboardPage() {
   }, [session]);
 
   async function loadUserData() {
+    if (!session?.user?.id) return;
+    
     try {
       const res = await fetch(`/api/user/${session.user.id}`);
       const data = await res.json();
@@ -48,6 +50,7 @@ export default function DashboardPage() {
       }
     } catch (error) {
       console.error('Error cargando ronda:', error);
+      setCurrentRound(null);
     }
   }
 
@@ -72,12 +75,13 @@ export default function DashboardPage() {
 
       if (data.success) {
         setMessage(`✅ ${data.message}`);
-        loadUserData();
-        loadCurrentRound();
+        await loadUserData();
+        await loadCurrentRound();
       } else {
         setMessage(`❌ ${data.error}`);
       }
     } catch (error) {
+      console.error('Error en apuesta:', error);
       setMessage('❌ Error al realizar apuesta');
     } finally {
       setIsPlacingBet(false);
@@ -104,17 +108,18 @@ export default function DashboardPage() {
             <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-blue-400 shadow-2xl flex-shrink-0">
               <Image 
                 src="/avatar.png" 
-                alt="Avatar"
+                alt="Avatar SlotMasters1K"
                 width={96}
                 height={96}
                 className="w-full h-full object-cover"
+                priority
               />
             </div>
             
             {/* Nombre y subtítulo */}
             <div>
               <h1 className="text-4xl font-bold text-white mb-2">
-                ¡Bienvenido, {userData?.discord_username || session.user.name}!
+                ¡Bienvenido, {userData?.discord_username || session.user?.name || 'Usuario'}!
               </h1>
               <p className="text-blue-200">Panel de Usuario - SlotMasters1K</p>
             </div>
@@ -164,7 +169,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <button
                     onClick={() => placeBet('A')}
-                    disabled={isPlacingBet}
+                    disabled={isPlacingBet || (userData?.points_balance || 0) < 10}
                     className="bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold text-2xl py-12 rounded-xl shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     🅰️ OPCIÓN A
@@ -175,7 +180,7 @@ export default function DashboardPage() {
 
                   <button
                     onClick={() => placeBet('B')}
-                    disabled={isPlacingBet}
+                    disabled={isPlacingBet || (userData?.points_balance || 0) < 10}
                     className="bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold text-2xl py-12 rounded-xl shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     🅱️ OPCIÓN B
@@ -196,6 +201,7 @@ export default function DashboardPage() {
                     max={userData?.points_balance || 0}
                     className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white text-lg focus:outline-none focus:border-blue-500"
                     placeholder="Mínimo 10 puntos"
+                    disabled={isPlacingBet}
                   />
                   <div className="text-white/60 text-sm mt-2">
                     Mínimo: 10 pts | Disponible: {userData?.points_balance || 0} pts
